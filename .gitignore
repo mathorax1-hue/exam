@@ -1,0 +1,25 @@
+# Local Python and editor files
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Owner question PDFs and extracts must not be committed
+workspace/owner-files/
+workspace/out/
+workspace/run.log
+workspace/*-package.zip
+workspace/*-package.zip.scan.json
+workspace/**/raw.xml
+workspace/**/cleanups.json
+workspace/**/visual_draft.json
+workspace/**/unparsed.json
+workspace/cache/
+
+# Keep official research sources and configs reviewed before committing;
+# never commit owner questions, credentials or private answer banks.
