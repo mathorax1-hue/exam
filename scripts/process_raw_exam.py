@@ -112,6 +112,42 @@ def load_json(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+TEXT_FIX_AUTO_ALLOWED = ("lost_ligature", "repeated_word", "space_before_punct", "double_space")
+
+
+def guarded_text_fix_config(original: str, raw_exam_dir: Path, code: str) -> str:
+    """Restrict automatic text edits, without modifying owner stems or keys.
+
+    The private owner workspace may supply a strict subset of the pinned
+    skill's default automatic fix types. This prevents product-name false
+    positives such as 'Microsoft Teams teams'. Every excluded proposal
+    becomes an explicit author decision; no silent rewrite takes place.
+    """
+    override = raw_exam_dir / "processing_overrides.json"
+    if not override.is_file():
+        return original
+    data = json.loads(override.read_text(encoding="utf-8"))
+    if data.get("exam") != code:
+        raise ValueError("Private override does not match exam code")
+    kinds = data.get("text_fixes_auto")
+    if (not isinstance(kinds, list) or not kinds
+            or len(kinds) != len(set(kinds))
+            or any(k not in TEXT_FIX_AUTO_ALLOWED for k in kinds)):
+        raise ValueError("Invalid automatic text fix subset")
+    old = """text_fixes:
+  enabled: true
+  auto:
+    - lost_ligature
+    - repeated_word
+    - space_before_punct
+    - double_space"""
+    new = "text_fixes:\\n  enabled: true\\n  auto:\\n" + "".join("    - " + k + "\\n" for k in kinds)
+    new = new.replace("\\n", "\n").rstrip("\n")
+    if original.count(old) != 1:
+        raise ValueError("Pinned text-fixes config anchor changed")
+    return original.replace(old, new, 1)
+
+
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as stream:
@@ -211,10 +247,9 @@ def main():
         marker = 'owner_rights_statement: ""'
         if original.count(marker) != 1:
             raise ValueError("upstream_owner_rights_configuration_marker_changed")
-        cfg_file.write_text(
-            original.replace(marker, "owner_rights_statement: " + json.dumps(rights), 1),
-            encoding="utf-8",
-        )
+        config_text = original.replace(marker, "owner_rights_statement: " + json.dumps(rights), 1)
+        config_text = guarded_text_fix_config(config_text, raw / "exams" / code, code)
+        cfg_file.write_text(config_text, encoding="utf-8")
         with (ws / "catalog.csv").open("w", newline="", encoding="utf-8") as outfile:
             writer = csv.DictWriter(outfile, fieldnames=COLUMNS)
             writer.writeheader()
