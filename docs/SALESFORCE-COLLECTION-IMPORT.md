@@ -13,4 +13,4 @@ The private collection catalog uses a source-specific alias when the folder titl
 
 The importer deliberately excludes VCE and other non-PDF inputs. It writes per-file SHA-256 metadata and PDF files into the private source repository, with Git LFS enabled. It does not publish an exam or complete the AI author, writing, validation, or packaging stages.
 
-This document confirms the catalog and workflow arrangement, not that all 102 PDFs have finished importing. Check private run status and `reports/batches/` for final success and any individual failures before reporting completion.
+**Completed result (verified):** GitHub Actions run [43021246836](https://github.com/mathorax1-hue/raw-exam/actions/runs/43021246836) concluded `success`. All 102 entries were imported as 102 PDF files (49,838,610 bytes) with zero failed or review records across 13 batches. The private summary is `reports/collections/salesforce-2026-11-11-summary.json`. Files are raw owner inputs only, not validated ready exams.
