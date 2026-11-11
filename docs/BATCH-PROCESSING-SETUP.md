@@ -48,3 +48,15 @@ The workflow handles lack of PAT by failing the **promotion** step when a packag
 - Corrected batch workflow run: https://github.com/mathorax1-hue/raw-exam/actions/runs/43024388458 (started 2026-11-11; completion and per-exam results must be verified from Actions and its final private report).
 
 Status and pre-author input artifacts are private and have a 14-day retention. Large batches consume GitHub Actions minutes and vendor sites can rate-limit research. Only the live run conclusion and report prove what succeeded.
+
+## Release evidence and destination verification (2026-11-11 update)
+
+- The public processor generates `result/evidence-manifest.json` plus eight independent proof files under `result/proofs/`. Official saved HTML snapshots are rehashed and compared with the vendor research hashes. A question audit detects pending reviews, researched unverified keys, answer-not-found items and scoring exclusions.
+- The raw private workflow's separate `audit` step generates and checks those proofs **after all 15 CertPassly stages and import conformance succeed**. It sets `steps.audit.outputs.ready=true` only if no unresolved review/evidence blockers exist.
+- Promotion copies the ZIP, its scanner report, release metadata, evidence-manifest and all proof files to the private destination. Before pushing, the destination's own `scripts/verify_releases.py --exam <CODE>` must pass. Its CI reruns independent checks and ZIP scanning on each push.
+- Proof files include SHA-256 for the owner input PDF, raw and processor Git revision, official source snapshot hashes and quotes, build bank checksum, all stage exit codes, validation checks, writing checks and package scan.
+- No source PDF, direct owner Drive link or raw extracted question material is written to the public processor. Real output stays inside private repositories.
+- **Validated draft is not website publication or 100% factual accuracy.** Human review and a live site importer trial remain separate requirements.
+- The promotion token `CERTPASSLY_REPOS_PAT` is required in the private `raw-exam` Actions secrets. The last actual token-check workflow failed because it was missing. Do not claim cross-repository pushes work until that check passes.
+
+[Ready-exams proof contract](https://github.com/mathorax1-hue/ready-exams/blob/main/docs/RELEASE-CONTRACT.md) | [Ready-exams CI](https://github.com/mathorax1-hue/ready-exams/actions/workflows/verify-ready-exams.yml)
