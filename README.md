@@ -30,13 +30,13 @@ An exam can be promoted to [private ready-exams](https://github.com/mathorax1-hu
 
 The `CERTPASSLY_REPOS_PAT` secret must be configured in the **private raw-exam** repository's Actions secrets, with Contents read/write access to private `ready-exams` for gated cross-repo promotion. Do not copy PATs into public files.
 
-## Real exam intake without committing owner PDFs
+## Source import and proof-backed releases
 
-The [secure exam intake workflow](.github/workflows/exam-intake.yml) accepts the exam code, official vendor, an owner-authorized Drive **folder** URL and a rights confirmation during a manual GitHub Actions run. It creates a temporary workspace, executes the pre-author stages using the pinned skill and uploads only a metadata summary, not the PDF or extracted questions.
+The original exam PDFs are imported and stored only in the [private raw-exam repository](https://github.com/mathorax1-hue/raw-exam), with Git LFS and SHA-256 manifests. The old public Drive intake workflow has been retired because it was superseded by the private raw-source architecture.
 
-**Important:** The Google Drive folder must be readable by the GitHub runner without ChatGPT's connected Google Drive account. A link that only works through a private Google login will fail. Workflow inputs are recorded in GitHub Actions run metadata, so treat folder URLs as sensitive and use only folders you are permitted to share with that runner. This job does not complete the required AI author stage or produce a final exam package.
+The public processing code provides [release evidence generation](scripts/build_release_evidence.py). Every fully prepared exam must create a traceable proof bundle before the private workflow pushes to [ready-exams](https://github.com/mathorax1-hue/ready-exams). The destination runs an independent [release verifier](https://github.com/mathorax1-hue/ready-exams/blob/main/scripts/verify_releases.py), checks source-page digests, all question and bank checks, and rescans the ZIP.
 
-AB-900 intake findings: [docs/AB-900-INTAKE.md](docs/AB-900-INTAKE.md).
+[Ready-exams release contract](https://github.com/mathorax1-hue/ready-exams/blob/main/docs/RELEASE-CONTRACT.md) defines the exact evidence files. Passing all automated gates means an **evidence-backed validated draft**, not a 100% factual guarantee or website publication.
 
 ## Maintenance
 
