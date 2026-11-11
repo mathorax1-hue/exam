@@ -1,0 +1,102 @@
+name: CertPassly skill environment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/certpassly.yml"
+      - "workspace/**"
+  workflow_dispatch:
+    inputs:
+      run_mode:
+        description: "Verify installation or run an exam pipeline"
+        required: true
+        type: choice
+        options:
+          - verify
+          - pipeline
+        default: verify
+      exam_code:
+        description: "Exam code for pipeline mode (e.g. AB-730)"
+        required: false
+        type: string
+      offline:
+        description: "Use only previously saved vendor pages and owner files"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  certpassly:
+    name: Install and run CertPassly
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EXAM_CODE: ${{ inputs.exam_code }}
+      RUN_MODE: ${{ inputs.run_mode }}
+      OFFLINE: ${{ inputs.offline }}
+    steps:
+      - name: Check out exam workspace
+        uses: actions/checkout@v4
+        with:
+          path: repo
+
+      - name: Check out pinned CertPassly skill
+        uses: actions/checkout@v4
+        with:
+          repository: msaqlainhaneef1/certpassly-exam-pipeline
+          ref: 13dea6bab662ab1c4bbf87017e912e519907c8bc
+          path: certpassly-exam-pipeline
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: certpassly-exam-pipeline/requirements.txt
+
+      - name: Install PDF tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils tesseract-ocr
+
+      - name: Install CertPassly skill into runner
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ./certpassly-exam-pipeline
+
+      - name: Verify command is available
+        run: certpassly-pipeline --help
+
+      - name: Run skill regression tests
+        working-directory: certpassly-exam-pipeline
+        run: python -m unittest discover -s tests -v
+
+      - name: Run an exam (manual pipeline mode only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_mode == 'pipeline' }}
+        shell: bash
+        run: |
+          if [[ ! "$EXAM_CODE" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::Provide a valid exam code (letters, numbers, dot, underscore or dash)."
+            exit 1
+          fi
+          if [[ ! -f repo/workspace/config/pipeline.yaml ]]; then
+            echo "::error::Add workspace/config/pipeline.yaml and required owner exam files before running the pipeline."
+            exit 1
+          fi
+          args=(--exam "$EXAM_CODE" --root "$GITHUB_WORKSPACE/repo/workspace")
+          if [[ "$OFFLINE" == "true" ]]; then args+=(--offline); fi
+          certpassly-pipeline "${args[@]}"
+
+      - name: Upload generated workspace outputs
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run_mode == 'pipeline' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: certpassly-${{ github.run_id }}
+          path: repo/workspace/output/
+          if-no-files-found: ignore
+          retention-days: 7
