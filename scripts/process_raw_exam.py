@@ -312,7 +312,9 @@ def identify_originals_after_bank(workspace: Path, code: str, overlay: dict):
         if key not in replaced:
             continue
         found.add(key)
-        row["created_source"] = "certpassly-team-original " + replaced[key]["editorial_question_id"]
+        row["created_source"] = ("owner_file slot " + key
+                                 + " SUPERSEDED; current question is CertPassly Team ORIGINAL "
+                                 + replaced[key]["editorial_question_id"])
         row["key_source"] = "certpassly_team_original_unverified"
         row["original_editorial_id"] = replaced[key]["editorial_question_id"]
         row["owner_question_replaced"] = key
@@ -336,7 +338,9 @@ def identify_originals_after_bank(workspace: Path, code: str, overlay: dict):
         key = row.get("question_key")
         if key in replaced:
             csv_found.add(key)
-            row["created_source"] = "certpassly-team-original " + replaced[key]["editorial_question_id"]
+            row["created_source"] = ("owner_file slot " + key
+                                 + " SUPERSEDED; current question is CertPassly Team ORIGINAL "
+                                 + replaced[key]["editorial_question_id"])
             row["author_key"] = "CertPassly Team"
             row["review_gate"] = "not_checked"
             row["publication_state"] = "draft"
