@@ -65,13 +65,15 @@ The core upstream instructions and manual were reviewed for this setup. Reading 
 
 The runner only **checks** the presence of author files at stage 9. It does not call an AI. Missing inputs stop the run; do not invent them to make the workflow green.
 
-## On-demand intake from Drive without Git commits
+## Private source intake and proof-backed release architecture
 
-Use `.github/workflows/exam-intake.yml` > Run workflow with `exam_code`, `vendor`, `folder_url`, and `rights_confirmed=true`. It checks out the same pinned skill, installs Python and PDF tools, prepares temporary owner config and a two-row catalog, runs the **pre-author** stages, and uploads only a metadata-only JSON summary. The Drive folder must be readable from the GitHub-hosted runner. Private Drive permissions are not transferred from ChatGPT into GitHub Actions. The workflow stores its supplied inputs in GitHub run metadata, not the repository source. Do not give it confidential folder links that must not be disclosed to GitHub.
+Owner exam inputs and Google Drive links are stored only in private `mathorax1-hue/raw-exam`; source PDFs are kept with Git LFS, each verified against its recorded SHA-256 manifest. The public `exam` repository contains script and workflow code only. The former public `.github/workflows/exam-intake.yml` has been retired in favor of the private raw repository's import and processing workflows.
 
-This does not complete `author`, `pages`, `validate`, or `package`. The owner PDF and extracted content are deliberately not committed or uploaded as GitHub Actions artifacts.
+For real exam processing, use `raw-exam/.github/workflows/process-exams.yml`. A source must have a real official exam code, matched vendor, rights statement, and exactly one chosen PDF before it is queued. The workflow executes pinned CertPassly stages and records private per-exam artifacts. Missing official source snapshots, reviewable question keys, and absent AI authoring files are explicit blockers.
 
-The first AB-900 PDF intake was reviewed on 2026-11-11. See `docs/AB-900-INTAKE.md` for SHA, question counts and official-metadata discrepancies.
+A fully authored exam passes the upstream bank, writing, validation, import-conformance and package-guard checks. The additional public `scripts/build_release_evidence.py` captures source provenance, official vendor page hashes and quotes, question audit, stage exit codes and a cryptographic proof manifest. Only when the evidence proof also passes may the private runner promote the result to private `ready-exams`, which independently verifies every evidence file and rescans the package.
+
+See the [ready-exams release contract](https://github.com/mathorax1-hue/ready-exams/blob/main/docs/RELEASE-CONTRACT.md). The stored result is `validated_draft` and remains unpublished pending accountable human subject-expert review and an actual production importer test. Do not call it 100% accurate solely because automated tests passed.
 
 ## Configuring a real exam
 
