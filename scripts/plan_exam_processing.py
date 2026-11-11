@@ -28,8 +28,12 @@ def main():
     ap.add_argument("--lookup", type=Path, required=True)
     ap.add_argument("--target", choices=["all", "one"], default="all")
     ap.add_argument("--exam", default="")
+    ap.add_argument("--max-exams", type=int, default=2,
+                    help="Maximum expensive private exam-processing jobs per run, 1-3")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
+    if not 1 <= args.max_exams <= 3:
+        raise SystemExit("--max-exams must be between 1 and 3; private Actions minutes are limited")
     root = args.raw_root.resolve()
     upstream = load(args.lookup)
     lookups = upstream.get("exams") or {}
@@ -94,13 +98,20 @@ def main():
         item["vendor"] = vendor
         item["has_authoring"] = any((path.parent / "authoring").glob("*.json"))
         if not item["reasons"]:
-            item["status"] = "queued"
-            matrix.append({"exam": exam})
+            if len(matrix) < args.max_exams:
+                item["status"] = "queued"
+                matrix.append({"exam": exam})
+            else:
+                item["status"] = "deferred_budget"
+                item["reasons"] = ["private_runner_budget_cap_reached"]
         plan.append(item)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     report = {"target": args.target, "requested_exam": args.exam, "total": len(plan),
-              "queued": len(matrix), "blocked": sum(x["status"] == "blocked" for x in plan),
+              "queued": len(matrix),
+              "eligible_total": sum(x["status"] in ("queued", "deferred_budget") for x in plan),
+              "deferred_budget": sum(x["status"] == "deferred_budget" for x in plan),
+              "blocked": sum(x["status"] == "blocked" for x in plan),
               "entries": plan}
     args.out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     matrix_txt = json.dumps({"include": matrix}, separators=(",", ":"))
@@ -110,7 +121,10 @@ def main():
             fh.write("matrix=" + matrix_txt + "\n")
             fh.write("queued=" + str(len(matrix)) + "\n")
             fh.write("blocked=" + str(report["blocked"]) + "\n")
-    print(f'Exam plan: {len(plan)} sources; {len(matrix)} queued; {report["blocked"]} blocked for source/mapping review')
+            fh.write("deferred=" + str(report["deferred_budget"]) + "\n")
+    print(f'Exam plan: {len(plan)} sources; {len(matrix)} queued; '
+          f'{report["deferred_budget"]} deferred by private-minutes budget; '
+          f'{report["blocked"]} blocked for source/mapping review')
     return 0
 
 
