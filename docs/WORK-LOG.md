@@ -47,3 +47,12 @@ For later changes, record: date, what was changed, why, commit SHA, CI URL/resul
 - Logged counts, unusual links, duplicate folder assignment and two folder structure spot-checks in `docs/EXAM-CATALOG-REVIEW.md` (commit `6d722ea42c0207b73369066d7c9ffe182e7f4d68`).
 - Did **not** commit folder URLs, question PDFs, or private exam inputs; did **not** run a real exam or infer an owner-rights statement.
 - Real processing remains gated on owner rights confirmation, exam selection and secure input handoff to GitHub Actions.
+
+## 2026-11-11: AB-900 owner authorization and PDF preflight
+
+- Owner confirmed permission to use exam PDFs in chat. This is recorded as an owner statement, not independently validated rights.
+- Downloaded the AB-900 PDF from the connected Google Drive account into the temporary private workspace, not the Git repository.
+- Inspected the PDF: 92 pages, 89 consecutively numbered questions, 37 text-visible answer keys and 52 hotspot items with blank answer text that need visual key review.
+- Compared the supplied cover's exam limits against Microsoft's official current AB-900 exam page and study guide; the cover differs. Do not use its numbers as official facts.
+- Committed sanitized intake summary in `docs/AB-900-INTAKE.md` (commit `01f779d46fbabdefda14b7a8fa4e4183f6b605ab`). Original input, raw text and private Drive links were not committed.
+- Real GitHub Actions exam stages, the required author batch, full validation and final package are **not** complete.
