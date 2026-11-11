@@ -42,14 +42,22 @@ jobs:
           cache: pip
           cache-dependency-path: certpassly-exam-pipeline/requirements.txt
 
-      - name: Install PDF tooling
+      - name: Check PDF tooling; install only missing utilities
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y poppler-utils tesseract-ocr
+          set -euo pipefail
+          if command -v pdftohtml >/dev/null && command -v pdftoppm >/dev/null && command -v tesseract >/dev/null; then
+            echo "Required Poppler/Tesseract tools are preinstalled; skipping apt."
+          else
+            sudo apt-get update -o Acquire::Retries=3
+            sudo apt-get install -y -o Acquire::Retries=3 poppler-utils tesseract-ocr
+          fi
+          command -v pdftohtml
+          command -v pdftoppm
+          command -v tesseract
 
       - name: Install CertPassly skill into runner
         run: |
-          python -m pip install --upgrade pip
           python -m pip install -e ./certpassly-exam-pipeline
 
       - name: Verify command is available
