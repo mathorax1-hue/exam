@@ -1,0 +1,34 @@
+name: Test public CertPassly processor adapters
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/test-processor.yml"
+      - "scripts/**"
+      - "tests/**"
+  pull_request:
+    paths:
+      - ".github/workflows/test-processor.yml"
+      - "scripts/**"
+      - "tests/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out public processor code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile processor modules
+        run: python -m compileall -q scripts
+      - name: Run synthetic evidence builder tests
+        run: python -m unittest discover -s tests -v
