@@ -20,9 +20,18 @@ This log records GitHub workspace setup and safe operational changes. It is not 
 - Manual real-exam processing has **not** been run. The upstream graded AI training exercises have **not** all been manually completed.
 - The weekly upstream-watch schedule has been created, but its first scheduled run remains to be confirmed.
 
+
+## 2026-11-11: Confirmed tests and scheduled recurring review
+
+- GitHub Actions [run 43012583788](https://github.com/mathorax1-hue/exam/actions/runs/43012583788) concluded **success**. Verified job-step results: skill checkout, Python setup, system PDF tools, package install, CLI help, regression suite and synthetic demos all succeeded.
+- The exam processing step was skipped because this was a push-triggered verification, not a manual real-exam run.
+- A weekly assistant review is enabled for Tuesdays, approximately 15:00 Asia/Karachi, beginning 2026-11-17. It compares upstream changes, checks GitHub Action results, and updates safe repository docs when there is a material change. The assistant automation is separate from the GitHub scheduled SHA tracker.
+- The automatic SHA tracker is scheduled for Mondays 08:00 UTC. Its first scheduled execution has not yet been observed.
+- Neither schedule retrains the assistant. No upstream source pin update, real exam run or publication is authorized by either schedule.
+
 ## Open items
 
-- Confirm the expanded demo workflow run succeeds. Record its run ID and conclusion.
+- Expanded demo verification **completed**: [run 43012583788](https://github.com/mathorax1-hue/exam/actions/runs/43012583788) succeeded; install, CLI, regression tests and both synthetic end-to-end demos were all green. The manual real-exam job was intentionally skipped.
 - Confirm weekly upstream-watch has write permission and records changes correctly when upstream advances. Its manual trigger may also be tested in GitHub UI.
 - Complete all graded training exercises on synthetic data before claiming formal training completion.
 - For a real exam: obtain owner-rights confirmation, configure the workspace, prepare saved official sources and author files, run all gates, and review the draft package. Do not commit owner inputs to this repository.
