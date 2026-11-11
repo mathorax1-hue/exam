@@ -56,3 +56,11 @@ For later changes, record: date, what was changed, why, commit SHA, CI URL/resul
 - Compared the supplied cover's exam limits against Microsoft's official current AB-900 exam page and study guide; the cover differs. Do not use its numbers as official facts.
 - Committed sanitized intake summary in `docs/AB-900-INTAKE.md` (commit `01f779d46fbabdefda14b7a8fa4e4183f6b605ab`). Original input, raw text and private Drive links were not committed.
 - Real GitHub Actions exam stages, the required author batch, full validation and final package are **not** complete.
+
+## 2026-11-11: Added on-demand owner-authorized intake workflow
+
+- Added `.github/workflows/exam-intake.yml`, commit `e5d81ac41cd49bc0467b9e2e579470b46d35367a`.
+- The workflow allows a manually supplied exam code, vendor, Drive folder URL and rights confirmation. It prepares a temporary workspace and attempts catalog, intake, sources, research, extraction, textfix, answer research and intent with the pinned skill.
+- Only a metadata report is uploaded as an Actions artifact. Real owner files and extracted questions stay off Git and out of artifacts.
+- This workflow **has not been dispatched or tested on AB-900**. An authenticated Drive connection in ChatGPT is not a credential on a GitHub-hosted runner, so folder accessibility must be verified in the actual run.
+- Readme and operations handbook were updated with instructions and limitations. The AI author stage and full package remain separate, unmet steps.
