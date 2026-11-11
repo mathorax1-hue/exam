@@ -30,11 +30,12 @@ class BudgetPlannerTests(unittest.TestCase):
                 "pdf_files": [{"name": "owner.pdf", "sha256": "a" * 64}],
             }), encoding="utf-8")
 
-    def plan(self, limit=2, target="all", exam=""):
+    def plan(self, limit=2, target="all", exam="", start=0):
         out = self.root / "plan.json"
         p = subprocess.run([sys.executable, str(SCRIPT),
                             "--raw-root", str(self.root), "--lookup", str(self.lookup),
                             "--target", target, "--exam", exam, "--max-exams", str(limit),
+                            "--start-index", str(start),
                             "--out", str(out)], capture_output=True, text=True)
         return p, json.loads(out.read_text()) if out.exists() else None
 
@@ -50,6 +51,18 @@ class BudgetPlannerTests(unittest.TestCase):
         p, report = self.plan(1, "one", "AB-900")
         self.assertEqual(0, p.returncode, p.stderr)
         self.assertEqual(["AB-900"], [x["exam"] for x in report["entries"] if x["status"] == "queued"])
+
+    def test_next_budget_batch_selects_new_exams(self):
+        first, a = self.plan(2, start=0)
+        second, b = self.plan(2, start=2)
+        self.assertEqual(0, first.returncode, first.stderr)
+        self.assertEqual(0, second.returncode, second.stderr)
+        names_a = [x["exam"] for x in a["entries"] if x["status"] == "queued"]
+        names_b = [x["exam"] for x in b["entries"] if x["status"] == "queued"]
+        self.assertEqual(2, len(names_a))
+        self.assertEqual(2, len(names_b))
+        self.assertFalse(set(names_a) & set(names_b))
+        self.assertEqual(4, b["next_start_index"])
 
     def test_rejects_unbounded_private_fanout(self):
         p, _ = self.plan(46)
