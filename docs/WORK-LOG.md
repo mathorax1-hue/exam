@@ -40,3 +40,10 @@ This log records GitHub workspace setup and safe operational changes. It is not 
 ## Logging rule
 
 For later changes, record: date, what was changed, why, commit SHA, CI URL/result, source revision checked, validation evidence and unresolved decisions. Never put tokens, real question content, raw extracts, seller strings or private source material in this file.
+
+## 2026-11-11: First Google Sheets exam catalog reviewed
+
+- Connected to the owner-provided Google Sheet named `Exams` and read the complete populated tab through row 164.
+- Logged counts, unusual links, duplicate folder assignment and two folder structure spot-checks in `docs/EXAM-CATALOG-REVIEW.md` (commit `6d722ea42c0207b73369066d7c9ffe182e7f4d68`).
+- Did **not** commit folder URLs, question PDFs, or private exam inputs; did **not** run a real exam or infer an owner-rights statement.
+- Real processing remains gated on owner rights confirmation, exam selection and secure input handoff to GitHub Actions.
