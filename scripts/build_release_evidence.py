@@ -171,6 +171,53 @@ def main():
         problems.append("missing_import_conformance_log")
 
     audit = question_audit(code, out)
+    # Image-based exams can contain an unmarked question screenshot AND a
+    # screenshot with the correct answer outlined. Explicit role review is
+    # essential: shipping the latter in the unanswered simulator leaks the key.
+    split_file = out / "extracted" / "split.json"
+    raw_split = load(split_file) if split_file.is_file() else {}
+    image_refs = sum(len(q.get("question_images") or []) +
+                     len(q.get("answer_images") or [])
+                     for q in raw_split.values() if isinstance(q, dict))
+    visual_role_path = source / "visual-role-audit.json"
+    visual_unreviewed = image_refs
+    visual_wrong_role = 0
+    visual_covered = 0
+    if image_refs:
+        if not visual_role_path.is_file():
+            problems.append("visual_source_role_manifest_missing")
+        else:
+            roles = load(visual_role_path)
+            if roles.get("exam") != code or roles.get("source_pdf_sha256") != manifest["pdf_files"][0].get("sha256"):
+                problems.append("visual_role_manifest_pdf_hash_mismatch")
+            records = roles.get("image_roles") or []
+            if not isinstance(records, list):
+                records = []
+            valid = [a for a in records if a.get("role") in (
+                "question_prompt_candidate",
+                "answer_reference_never_show_before_submission")]
+            visual_covered = len(valid)
+            if visual_covered != image_refs:
+                problems.append("visual_role_coverage_mismatch")
+            visual_unreviewed = sum(a.get("approved_for_release") is not True for a in valid)
+            # A checked answer-reference screenshot must explicitly remain
+            # hidden until feedback after submission.
+            visual_wrong_role = sum(
+                a.get("role") == "answer_reference_never_show_before_submission"
+                and (a.get("may_display_before_submission") is True
+                     or a.get("answer_verified") is not True)
+                for a in valid)
+            if visual_unreviewed:
+                problems.append(f"visual_assets_not_approved:{visual_unreviewed}")
+            if visual_wrong_role:
+                problems.append(f"visual_answers_not_checked_or_exposed:{visual_wrong_role}")
+    audit.update({
+        "visual_image_count": image_refs,
+        "visual_role_coverage_count": visual_covered,
+        "unreviewed_visual_asset_count": visual_unreviewed,
+        "pre_submission_answer_leak_count": visual_wrong_role,
+        "visual_role_manifest_sha256": sha(visual_role_path) if visual_role_path.is_file() else None,
+    })
     write_json(proofdir / "question-audit.json", audit)
     for k in ("held_count", "answer_not_found_count", "unverified_key_count",
               "flagged_accuracy_count", "human_review_required_count",
