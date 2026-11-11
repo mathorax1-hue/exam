@@ -105,6 +105,76 @@ def question_audit(code, out):
     return proof
 
 
+
+def audit_active_visual_roles(split: dict, role_manifest: dict) -> dict:
+    """Compare active post-replacement image slots to the original PDF role inventory.
+
+    Removed originals must not be counted as live screenshot assets, but their
+    provenance is retained. Matching is by original source question key and by
+    separate question/answer counts, not by a total that can hide swapped roles.
+    """
+    records = role_manifest.get("image_roles")
+    if not isinstance(records, list):
+        raise ValueError("Visual role inventory must be a list")
+    grouped = collections.defaultdict(list)
+    for rec in records:
+        if not isinstance(rec, dict):
+            raise ValueError("Malformed original PDF visual role record")
+        if rec.get("role") in (
+            "question_prompt_candidate", "answer_reference_never_show_before_submission"
+        ):
+            grouped[rec.get("question_key")].append(rec)
+    active, superseded, issues = [], [], []
+    if not isinstance(split, dict) or not split:
+        raise ValueError("No extracted question mapping to audit")
+    expected_total = 0
+    for qid, question in split.items():
+        if not isinstance(question, dict):
+            issues.append(f"{qid}:invalid_question")
+            continue
+        expected = {
+            "question_prompt_candidate": len(question.get("question_images") or []),
+            "answer_reference_never_show_before_submission": len(question.get("answer_images") or [])
+        }
+        expected_total += sum(expected.values())
+        current = grouped.pop(qid, [])
+        if sum(expected.values()) == 0:
+            superseded.extend(current)
+            continue
+        for role, count in expected.items():
+            rows = [x for x in current if x["role"] == role]
+            if count != len(rows):
+                issues.append(f"{qid}:{role}:expected_{count}:mapped_{len(rows)}")
+            active.extend(rows)
+    # Original PDF roles for a question no longer in the active bank cannot
+    # be silently promoted as active. They remain traceable as superseded.
+    for qid, leftovers in grouped.items():
+        superseded.extend(leftovers)
+        if qid in split:
+            issues.append(f"{qid}:unexpected_unmapped_source_role")
+    identities = [(a.get("question_key"), a.get("page"), a.get("xref")) for a in active]
+    if len(identities) != len(set(identities)):
+        issues.append("duplicate_active_pdf_image_xref")
+    return {
+        "active_image_reference_count": expected_total,
+        "active_role_coverage_count": len(active),
+        "active_question_image_count": sum(x["role"] == "question_prompt_candidate" for x in active),
+        "active_answer_reference_count": sum(x["role"] == "answer_reference_never_show_before_submission" for x in active),
+        "superseded_owner_image_reference_count": len(superseded),
+        "original_owner_image_reference_count": len(active) + len(superseded),
+        "unapproved_active_image_count": sum(x.get("approved_for_release") is not True for x in active),
+        "unverified_active_answer_reference_count": sum(
+            x.get("answer_verified") is not True for x in active
+            if x["role"] == "answer_reference_never_show_before_submission"
+        ),
+        "pre_submission_answer_leak_count": sum(
+            x.get("may_display_before_submission") is True for x in active
+            if x["role"] == "answer_reference_never_show_before_submission"
+        ),
+        "role_mapping_issues": issues,
+    }
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--raw-root", required=True, type=Path)
@@ -188,6 +258,7 @@ def main():
     visual_unreviewed = image_refs
     visual_wrong_role = 0
     visual_covered = 0
+    image_audit = {}
     if image_refs:
         if not visual_role_path.is_file():
             problems.append("visual_source_role_manifest_missing")
@@ -195,32 +266,32 @@ def main():
             roles = load(visual_role_path)
             if roles.get("exam") != code or roles.get("source_pdf_sha256") != manifest["pdf_files"][0].get("sha256"):
                 problems.append("visual_role_manifest_pdf_hash_mismatch")
-            records = roles.get("image_roles") or []
-            if not isinstance(records, list):
-                records = []
-            valid = [a for a in records if a.get("role") in (
-                "question_prompt_candidate",
-                "answer_reference_never_show_before_submission")]
-            visual_covered = len(valid)
-            if visual_covered != image_refs:
-                problems.append("visual_role_coverage_mismatch")
-            visual_unreviewed = sum(a.get("approved_for_release") is not True for a in valid)
-            # A checked answer-reference screenshot must explicitly remain
-            # hidden until feedback after submission.
-            visual_wrong_role = sum(
-                a.get("role") == "answer_reference_never_show_before_submission"
-                and (a.get("may_display_before_submission") is True
-                     or a.get("answer_verified") is not True)
-                for a in valid)
+            image_audit = audit_active_visual_roles(raw_split, roles)
+            visual_covered = image_audit["active_role_coverage_count"]
+            visual_unreviewed = image_audit["unapproved_active_image_count"]
+            visual_wrong_role = image_audit["pre_submission_answer_leak_count"]
+            if image_audit["role_mapping_issues"] or visual_covered != image_refs:
+                problems.append("visual_role_coverage_mismatch:" +
+                                ",".join(image_audit["role_mapping_issues"][:8]))
             if visual_unreviewed:
                 problems.append(f"visual_assets_not_approved:{visual_unreviewed}")
+            if image_audit["unverified_active_answer_reference_count"]:
+                problems.append("visual_answer_keys_not_verified:" +
+                                str(image_audit["unverified_active_answer_reference_count"]))
             if visual_wrong_role:
-                problems.append(f"visual_answers_not_checked_or_exposed:{visual_wrong_role}")
+                problems.append(f"pre_submission_answer_image_exposed:{visual_wrong_role}")
     audit.update({
         "visual_image_count": image_refs,
         "visual_role_coverage_count": visual_covered,
         "unreviewed_visual_asset_count": visual_unreviewed,
         "pre_submission_answer_leak_count": visual_wrong_role,
+        "unverified_visual_answer_reference_count": image_audit.get(
+            "unverified_active_answer_reference_count", 0),
+        "active_question_image_count": image_audit.get("active_question_image_count", 0),
+        "active_answer_reference_count": image_audit.get("active_answer_reference_count", 0),
+        "superseded_owner_image_reference_count": image_audit.get(
+            "superseded_owner_image_reference_count", 0),
+        "visual_role_mapping_issues": image_audit.get("role_mapping_issues", []),
         "visual_role_manifest_sha256": sha(visual_role_path) if visual_role_path.is_file() else None,
     })
     write_json(proofdir / "question-audit.json", audit)
