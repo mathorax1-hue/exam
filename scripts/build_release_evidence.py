@@ -175,7 +175,12 @@ def main():
     # screenshot with the correct answer outlined. Explicit role review is
     # essential: shipping the latter in the unanswered simulator leaks the key.
     split_file = out / "extracted" / "split.json"
+    if not split_file.is_file():
+        problems.append("owner_question_split_missing_for_visual_proof")
     raw_split = load(split_file) if split_file.is_file() else {}
+    if not isinstance(raw_split, dict):
+        problems.append("owner_question_split_not_mapping")
+        raw_split = {}
     image_refs = sum(len(q.get("question_images") or []) +
                      len(q.get("answer_images") or [])
                      for q in raw_split.values() if isinstance(q, dict))
