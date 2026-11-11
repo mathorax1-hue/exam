@@ -65,6 +65,14 @@ The core upstream instructions and manual were reviewed for this setup. Reading 
 
 The runner only **checks** the presence of author files at stage 9. It does not call an AI. Missing inputs stop the run; do not invent them to make the workflow green.
 
+## On-demand intake from Drive without Git commits
+
+Use `.github/workflows/exam-intake.yml` > Run workflow with `exam_code`, `vendor`, `folder_url`, and `rights_confirmed=true`. It checks out the same pinned skill, installs Python and PDF tools, prepares temporary owner config and a two-row catalog, runs the **pre-author** stages, and uploads only a metadata-only JSON summary. The Drive folder must be readable from the GitHub-hosted runner. Private Drive permissions are not transferred from ChatGPT into GitHub Actions. The workflow stores its supplied inputs in GitHub run metadata, not the repository source. Do not give it confidential folder links that must not be disclosed to GitHub.
+
+This does not complete `author`, `pages`, `validate`, or `package`. The owner PDF and extracted content are deliberately not committed or uploaded as GitHub Actions artifacts.
+
+The first AB-900 PDF intake was reviewed on 2026-11-11. See `docs/AB-900-INTAKE.md` for SHA, question counts and official-metadata discrepancies.
+
 ## Configuring a real exam
 
 Create the following under `workspace/` only when authorized and when the data is safe to stage. Prefer a private artifact store for owner PDFs rather than committing them.
