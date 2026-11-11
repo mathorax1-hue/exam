@@ -24,7 +24,7 @@ EVIDENCE_NAMES = ["stage-results.json", "source-provenance.json",
                   "official-sources.json", "question-audit.json",
                   "validation.json", "writing-review.json",
                   "bank-check.log", "import-conformance.log"]
-REVIEW_FLAGS = re.compile(r"wrong|outdated|arguable|could_not|unverified|needs_review|dispute|inaccurate", re.I)
+REVIEW_FLAGS = re.compile(r"wrong|outdated|arguable|could_not|unverified|needs_review|dispute|inaccurate|flagged|not_checked|pending|missing", re.I)
 
 
 def sha(path):
@@ -180,21 +180,46 @@ def main():
     research_file = ws / "research" / manifest["vendor_slug"] / f"{code}.json"
     research = load(research_file)
     sources = research.get("sources") or []
-    official_sources = [{
-        "id": str(s.get("id") or ""),
-        "url": str(s.get("url") or ""),
-        "expected_sha256": str(s.get("expected_sha256") or ""),
-        "retrieved_date": str(s.get("as_of_date") or ""),
-    } for s in sources]
+    # Independently hash the actual saved official HTML pages, rather
+    # than trusting the declared source hashes in the research file.
+    saved_sources = {}
+    vendor_sources = ws / "sources" / manifest["vendor_slug"]
+    if vendor_sources.is_dir():
+        for sidecar in vendor_sources.rglob("*.html.json"):
+            try:
+                meta = load(sidecar)
+                html_snapshot = sidecar.with_suffix("")
+                if not html_snapshot.is_file():
+                    continue
+                digest = sha(html_snapshot)
+                saved_sources[(str(meta.get("url") or ""), digest)] = html_snapshot.stat().st_size
+            except (OSError, ValueError, TypeError):
+                continue
+    official_sources = []
+    for source_info in sources:
+        url = str(source_info.get("url") or "")
+        expected = str(source_info.get("expected_sha256") or "")
+        verified_size = saved_sources.get((url, expected))
+        official_sources.append({
+            "id": str(source_info.get("id") or ""),
+            "url": url,
+            "expected_sha256": expected,
+            "retrieved_date": str(source_info.get("as_of_date") or ""),
+            "content_sha256_verified": verified_size is not None,
+            "snapshot_size_bytes": verified_size,
+        })
     facts = factual_quotes({"exam_name": research.get("exam_name"), "facts": research.get("facts"),
                             "objectives": research.get("objectives")})
     info = {"exam": code, "sources": official_sources,
+            "verified_source_count": sum(s["content_sha256_verified"] for s in official_sources),
             "quoted_fact_count": len(facts), "quoted_facts": facts}
     write_json(proofdir / "official-sources.json", info)
-    hashes = {s["expected_sha256"] for s in official_sources}
+    hashes = {x["expected_sha256"] for x in official_sources}
     if not official_sources or not facts:
         problems.append("official_fact_evidence_missing")
-    if any(not re.fullmatch(r"[0-9a-f]{64}", s["expected_sha256"]) for s in official_sources):
+    if info["verified_source_count"] != len(official_sources):
+        problems.append("official_page_snapshot_hash_mismatch_or_missing")
+    if any(not re.fullmatch(r"[0-9a-f]{64}", x["expected_sha256"]) for x in official_sources):
         problems.append("official_source_hash_missing")
     if any(not f.get("quote") or f.get("sha256") not in hashes for f in facts):
         problems.append("official_fact_quote_not_bound_to_source")
