@@ -271,6 +271,9 @@ def main():
     release.update({
         "contract_version": 1, "publication_state": "draft", "published": False,
         "human_review_status": "pending", "ready_for_publication": False,
+        "author": "CertPassly Team",
+        "editorial_credit": "CertPassly Team",
+        "editorial_process": "AI-assisted draft; independent human subject review pending",
         "processor_code_commit": args.processor_commit,
         "evidence_manifest_sha256": sha(manifest_file),
         "validation_check_count": len(validation), "validation_failures": 0,
