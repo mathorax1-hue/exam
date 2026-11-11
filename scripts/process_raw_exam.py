@@ -148,6 +148,208 @@ def guarded_text_fix_config(original: str, raw_exam_dir: Path, code: str) -> str
     return original.replace(old, new, 1)
 
 
+
+def apply_original_editorial_overlay(workspace: Path, raw_exam: Path, exam: str,
+                                     result_dir: Path):
+    """Overlay original CertPassly Team questions without replacing the owner PDF.
+
+    The replacement is restricted to exactly the owner's existing question slots.
+    The complete original split remains in the private extraction artifact/PDF,
+    and hashes plus original/new question identities are recorded for audit.
+    """
+    path = raw_exam / "authoring" / "original_editorial_replacements.json"
+    if not path.is_file():
+        return {}
+    raw_manifest = load_json(raw_exam / "manifest.json")
+    data = load_json(path)
+    if (data.get("exam_code") != exam or data.get("author") != "CertPassly Team"
+            or data.get("owner_pdf_sha256") != raw_manifest["pdf_files"][0]["sha256"]
+            or data.get("publication_state") != "EDITORIAL_REPLACEMENT_DRAFT_NOT_RELEASED"):
+        raise ValueError("Original editorial replacements do not match owner provenance")
+    records = data.get("replacement_questions")
+    if (not isinstance(records, list) or not records
+            or len(records) != data.get("replacement_count")):
+        raise ValueError("Invalid replacement count")
+    split_path = workspace / "out" / exam / "extracted" / "split.json"
+    split = load_json(split_path)
+    if not isinstance(split, dict):
+        raise ValueError("Owner extraction is not a keyed question list")
+    original_sha = sha256(split_path)
+    original_count = len(split)
+    archive = result_dir / "original-owner-extraction.sha256.json"
+    write_json(archive, {"exam": exam, "owner_question_split_sha256": original_sha,
+                         "question_count": original_count,
+                         "source_pdf_sha256": raw_manifest["pdf_files"][0]["sha256"]})
+    seen = set()
+    rewritten = {}
+    for item in records:
+        old = item.get("original_owner_question_id")
+        new = item.get("new_question_key")
+        if (not isinstance(old, str) or not re.fullmatch(r"q[0-9]{3,5}", old)
+                or old not in split or old in seen
+                or new != "cp-" + exam.lower().replace("-", "") + "-" + old + "-r1"):
+            raise ValueError("Replacement does not map uniquely to one extracted owner question")
+        seen.add(old)
+        if (item.get("author") != "CertPassly Team"
+                or item.get("approved_for_publication") is not False
+                or item.get("not_in_owner_pdf") is not True):
+            raise ValueError("Replacement lacks original and draft attribution")
+        urls = item.get("official_sources") or []
+        if (not isinstance(urls, list) or not urls
+                or any(not isinstance(u, str) or
+                       not re.match(r"^https://(learn\.microsoft\.com|support\.microsoft\.com)/", u)
+                       for u in urls)):
+            raise ValueError("Original replacement lacks official source URLs")
+        qtype = item.get("type") or item.get("question_type")
+        stem = item.get("stem")
+        if not isinstance(stem, str) or len(stem) < 20:
+            raise ValueError("Original replacement stem missing")
+        original = split[old]
+        row = {
+            "question_key": old, "source_number": original["source_number"],
+            "marker": "CERTPASSLY ORIGINAL, replaces " + old, "pages": [],
+            "stem": stem, "options": {}, "answer_raw": "",
+            "question_images": [], "answer_images": [],
+            "layout_profile": "certpassly_team_original_editorial",
+        }
+        if qtype == "yes_no_matrix":
+            ys = item.get("correct_responses") or []
+            rows = item.get("rows") or []
+            if (not isinstance(rows, list) or len(rows) < 2
+                    or len(rows) != len(ys)
+                    or any(v.lower() not in ("yes", "no") for v in ys)):
+                raise ValueError("Original matrix rows and key shape mismatch")
+            if "select Yes if the statement is true" not in stem:
+                row["stem"] = stem.replace("select Yes if it is correct",
+                                           "select Yes if the statement is true")
+            if "select Yes if the statement is true" not in row["stem"]:
+                raise ValueError("Original matrix stem lacks the pinned yes/no marker")
+        elif qtype == "single_choice":
+            options = item.get("options") or []
+            if not isinstance(options, list) or len(options) < 2:
+                raise ValueError("Original selection question needs options")
+            pairs = [(x.get("id"), x.get("text")) for x in options]
+            letters = [x[0] for x in pairs]
+            correct = item.get("correct_option_id")
+            if (len(set(letters)) != len(letters)
+                    or any(not re.fullmatch(r"[a-h]", str(x)) or not isinstance(y, str)
+                           or not y.strip() for x, y in pairs)
+                    or correct not in letters):
+                raise ValueError("Original option IDs or selected answer invalid")
+            row["options"] = dict(pairs)
+            row["answer_raw"] = correct.upper()
+        else:
+            raise ValueError("Unsupported new original editorial question type: " + str(qtype))
+        split[old] = row
+        rewritten[old] = {
+            "original_source_question_key": old,
+            "editorial_question_id": new,
+            "editorial_stem_sha256": hashlib.sha256(row["stem"].encode()).hexdigest(),
+            "official_reference_urls": urls,
+            "source_kind": "original_certpassly_team_not_owner_pdf",
+            "source_accuracy_review": "pending",
+            "human_review_status": "pending",
+        }
+    if len(split) != original_count:
+        raise ValueError("Overlay changed the source question count")
+    write_json(split_path, split)
+    # Remove stale source-image guesses from the discarded original question,
+    # never use an old highlighted key to score a newly written replacement.
+    vd = split_path.with_name("visual_draft.json")
+    if vd.is_file():
+        draft = load_json(vd)
+        if isinstance(draft, dict):
+            for old in seen:
+                draft.pop(old, None)
+            write_json(vd, draft)
+    # Visual transcriptions are required BEFORE answer_research. Without them,
+    # the pinned skill may try to invent missing keys for source-image questions.
+    trans_path = raw_exam / "visual_transcription.json"
+    if not trans_path.is_file():
+        raise ValueError("Source visuals lack an authoring transcription file")
+    vt = load_json(trans_path)
+    if any(k not in split for k in vt):
+        raise ValueError("Visual transcript refers to a nonexistent question slot")
+    visual_questions = {k for k, x in split.items() if not x["options"]}
+    if set(vt) != visual_questions:
+        raise ValueError("Incomplete visual transcript coverage")
+    for old in rewritten:
+        if old in vt and (item := next(r for r in records if r["original_owner_question_id"] == old)):
+            if (item.get("type") or item.get("question_type")) != "yes_no_matrix":
+                raise ValueError("Unexpected visual replacement type")
+            if vt[old].get("rows") != item.get("rows"):
+                raise ValueError("Original matrix transcript rows differ from new item")
+            if vt[old].get("key") != item.get("correct_responses"):
+                raise ValueError("Original matrix transcript key differs from new item")
+    shutil.copyfile(trans_path, split_path.with_name("visual_transcription.json"))
+    details = {
+        "exam": exam, "original_owner_split_sha256": original_sha,
+        "overlaid_split_sha256": sha256(split_path),
+        "editorial_replacements_sha256": sha256(path),
+        "replacements": rewritten, "count": len(rewritten),
+        "owner_pdf_untouched": True, "editorial_credit": "CertPassly Team",
+        "human_review_status": "pending", "ready_for_publication": False,
+    }
+    write_json(result_dir / "editorial-overlay-evidence.json", details)
+    print(f"{exam}: applied {len(rewritten)} original editorial draft questions; original owner keys retained in private PDF")
+    return details
+
+
+def identify_originals_after_bank(workspace: Path, code: str, overlay: dict):
+    """Correct source attribution in generated bank records; do not claim owner authorship."""
+    if not overlay:
+        return
+    root = workspace / "out" / code
+    qfile = root / "questions.json"
+    if not qfile.is_file():
+        raise ValueError("Bank did not generate questions.json")
+    result = load_json(qfile)
+    questions = result.get("questions") or []
+    replaced = overlay["replacements"]
+    found = set()
+    for row in questions:
+        key = row.get("question_key")
+        if key not in replaced:
+            continue
+        found.add(key)
+        row["created_source"] = "certpassly-team-original " + replaced[key]["editorial_question_id"]
+        row["key_source"] = "certpassly_team_original_unverified"
+        row["original_editorial_id"] = replaced[key]["editorial_question_id"]
+        row["owner_question_replaced"] = key
+        row["editorial_reference_urls"] = replaced[key]["official_reference_urls"]
+        row["human_review_required"] = True
+        row["review_gate"] = "not_checked"
+        row["publication_state"] = "draft"
+        row.setdefault("flags", []).append("original editor draft: independent review pending")
+    if found != set(replaced):
+        raise ValueError("Not every original editorial question was built into bank")
+    write_json(qfile, result)
+    csv_file = root / "import" / "questions.csv"
+    if not csv_file.is_file():
+        raise ValueError("Bank did not produce the site-format questions.csv")
+    with csv_file.open(newline="", encoding="utf-8") as source:
+        reader = csv.DictReader(source)
+        headers = list(reader.fieldnames or [])
+        rows = list(reader)
+    csv_found = set()
+    for row in rows:
+        key = row.get("question_key")
+        if key in replaced:
+            csv_found.add(key)
+            row["created_source"] = "certpassly-team-original " + replaced[key]["editorial_question_id"]
+            row["author_key"] = "CertPassly Team"
+            row["review_gate"] = "not_checked"
+            row["publication_state"] = "draft"
+            row["blocking_reason"] = "AI-assisted original draft, independent review pending"
+    if csv_found != found:
+        raise ValueError("Question source attribution missing from import CSV")
+    with csv_file.open("w", newline="", encoding="utf-8") as dest:
+        writer = csv.DictWriter(dest, fieldnames=headers)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as stream:
@@ -310,10 +512,13 @@ def main():
             print(f"{code}: stage {name} exit {rc}", flush=True)
             return rc
 
+        overlay = {}
         for name in STAGE_PRE:
             rc = stage(name)
             if name == "sources" and rc == 0:
                 add_verified_official_name(ws, code, vendor, resdir)
+            if name == "research" and rc == 0:
+                overlay = apply_original_editorial_overlay(ws, raw / "exams" / code, code, resdir)
             if rc:
                 result["status"] = "needs_official_sources" if name in ("sources", "research") else "blocked_stage"
                 result["reason"] = name + "_failed"
@@ -340,6 +545,8 @@ def main():
                     shutil.copyfile(trans, dest2 / trans.name)
                 for name in STAGE_POST:
                     rc = stage(name)
+                    if name == "bank" and rc == 0:
+                        identify_originals_after_bank(ws, code, overlay)
                     if rc:
                         result["status"] = "blocked_stage"
                         result["reason"] = name + "_failed"
