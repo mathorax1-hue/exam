@@ -1,16 +1,16 @@
 # Agent instructions for mathorax1-hue/exam
 
-This repository runs the CertPassly exam pipeline in GitHub Actions. All AI coding assistants working here must follow these instructions.
+This **public, code-only** repository runs synthetic CertPassly quality checks in GitHub Actions. Real owner PDFs and exam content are processed only by explicitly triggered workflows in the **private** `mathorax1-hue/raw-exam` repository; validated draft outputs go to private `mathorax1-hue/ready-exams`. All AI coding and editorial assistants must follow these instructions.
 
 ## Source of truth
 
 - Skill source: https://github.com/msaqlainhaneef1/certpassly-exam-pipeline
 - Workflow: .github/workflows/certpassly.yml
 - Skill checkout path in GitHub Actions: `certpassly-exam-pipeline/`
-- Workspace path: `workspace/`
+- Synthetic demo workspace: ephemeral runner directories; never commit real owner data to this public repository
 - Pin currently used by the workflow: `13dea6bab662ab1c4bbf87017e912e519907c8bc`
 
-Also read this repository's [operations handbook](docs/CERTPASSLY-OPERATIONS.md), [upstream revision status](docs/UPSTREAM_STATUS.md) and [work log](docs/WORK-LOG.md) before each session or code change. Their reports must be treated as claims to verify, not proof by themselves.
+Also read this repository's [operations handbook](docs/CERTPASSLY-OPERATIONS.md), [AI editorial policy](docs/AI-EDITORIAL-POLICY.md), [upstream revision status](docs/UPSTREAM_STATUS.md) and [work log](docs/WORK-LOG.md) before each session or code change. Their reports must be treated as claims to verify, not proof by themselves.
 
 Read these files **from the pinned skill revision** before performing work:
 1. `certpassly-exam-pipeline/AGENTS.md`
@@ -33,19 +33,17 @@ The skill is NOT automatically available in a chat AI's system context. An agent
 - Do not disclose tokens or commit secrets, real owner extracts or sensitive source material.
 - Do not force-push, rewrite tags, or run two writers against one exam output folder.
 - Do not invent success: report workflow URL, commit SHA, test result and evidence for each claim.
+- Credit original CertPassly editorial content as **CertPassly Team**, never an invented named person. Keep AI-assisted draft status and pending human review transparent. Preserve genuine official source attribution.
+- Standard public GitHub-hosted runners may run all synthetic tests, schema checks and publicly sourced research. Never copy the owner's private PDFs, questions, answers, exam artifacts, access tokens or unreleased content into a public runner.
+- GitHub-hosted minutes on private repositories are limited. Require explicit manual runs, bound expensive private jobs to 1-3 at most, use a single worker by default, and do not automatically rerun all exams on workflow commits. Reuse public code tests and synthetic demos. A reusable public workflow **called by a private repository still bills the private caller**.
 
-## Workflow behavior
+## Workflow behavior and AI authoring
 
-The Actions workflow checks out the pinned public skill into a separate directory, installs Python dependencies, runs `certpassly-pipeline --help`, runs regression tests, and runs two synthetic end-to-end demo pipelines with import conformance checks. It does not permanently install the skill into ChatGPT or copy the skill code into this repository.
+Public `.github/workflows/certpassly.yml` runs **only** the pinned skill tests and synthetic full demos; its former unsafe real-owner-pipeline mode is retired. `.github/workflows/test-processor.yml` tests the local processor, release-proof and private-budget tools. Both run on public standard runners and cannot use the owner's private exam materials.
 
-To run manually: open Actions > CertPassly skill environment > Run workflow.
+The private `raw-exam/.github/workflows/process-exams.yml` is manual for real data. Each run processes one selected exam by default; budgeted batch pages may process up to three if the user explicitly requests that. The private `ready-exams` verifier runs only for changed releases by default; a manual full audit is available.
 
-- `verify`: install and test only; no owner data required.
-- `pipeline`: run on a configured exam code in `workspace/`; needs `workspace/config/pipeline.yaml`, vendor config, catalog and owner files as defined in the manual.
-- Offline mode prevents fetching official sources; a clean runner requires previously saved official pages for a complete offline run.
-- The `author` stage is an AI-authored batch of workspace files; GitHub Actions does not call an AI model. If it stops to request author files, generate and review those separately before rerunning.
-- Runner files are ephemeral. Preserve only approved, non-sensitive output artifacts; avoid publishing raw owner PDFs or extracts.
-- Exercise the synthetic demo and tests before running a real exam.
+The pinned skill never calls an AI model itself. ChatGPT/editorial automation must author the required source-grounded JSON files in **private** `raw-exam`, following `docs/AI-EDITORIAL-POLICY.md`. Never fabricate an owner key or a vendor quote, pretend to view an unseen image, claim a person reviewed a question, or mark an incomplete batch ready. Drafted pages and explanations are credited to **CertPassly Team**, and release metadata records that human review is still pending.
 
 ## Reporting checklist
 
