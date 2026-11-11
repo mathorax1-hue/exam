@@ -64,3 +64,17 @@ For later changes, record: date, what was changed, why, commit SHA, CI URL/resul
 - Only a metadata report is uploaded as an Actions artifact. Real owner files and extracted questions stay off Git and out of artifacts.
 - This workflow **has not been dispatched or tested on AB-900**. An authenticated Drive connection in ChatGPT is not a credential on a GitHub-hosted runner, so folder accessibility must be verified in the actual run.
 - Readme and operations handbook were updated with instructions and limitations. The AI author stage and full package remain separate, unmet steps.
+
+## 2026-11-11: Private raw-to-ready batch processing enabled
+
+- Verified the architecture: `mathorax1-hue/exam` is **public code-only**; `mathorax1-hue/raw-exam` and `mathorax1-hue/ready-exams` are **private**.
+- Added `scripts/plan_exam_processing.py` and `scripts/process_raw_exam.py` to public processor code. Source PDFs remain in private raw repository and are fetched one at a time via Git LFS, matched to the SHA-256 manifest.
+- Added private `raw-exam/.github/workflows/process-exams.yml`, which runs all eligible mapped exam sources, reports blocked sources, executes pre-author stages, uploads **private** stage artifacts, and promotes a package only if author, writing, bank, validation, import conformance and package scanning all pass.
+- Corrected two live integration issues: private Git LFS checkout credentials and the restricted syntax of the upstream YAML parser. The runner now preserves upstream YAML and changes only the owner-rights string.
+- Improved the runner to extract authorized PDFs **before** official-source research, and to retry blocked vendor HTML retrieval using the upstream skill's documented optional Playwright browser if rendering was unavailable.
+- Latest live run: [43025342443](https://github.com/mathorax1-hue/raw-exam/actions/runs/43025342443), started 2026-11-11; verify final conclusion before claiming completion.
+- Verified live private plan artifact: **185 source manifests, 46 queued for stage processing, 139 blocked before processing**. Blocking issues include missing official exam URLs, provisional aliases requiring official exam-code identification, and 2 records needing a single selected PDF. Block reason counts overlap.
+- One confirmed real-source example: AAIR extracted 90 questions from an owner PDF; catalog, intake, extraction, and official-source retrieval succeeded, but research blocked because the saved official page lacks a weighted exam skill outline. The artifact status is `needs_official_sources`, not ready. Do not invent vendor weights.
+- Promotion token validation workflow [43024897974](https://github.com/mathorax1-hue/raw-exam/actions/runs/43024897974) confirmed `CERTPASSLY_REPOS_PAT` was **missing from raw-exam Actions secrets** at verification time. The user must add it to the private `raw-exam` repository for future cross-repo promotions; the value must not be pasted into chat.
+- As of this log, no real exam package has been confirmed promoted or published. The upstream skill has no built-in AI call for the author stage. No auto-generated invented keys or author files were added.
+- One-time scheduled follow-up was configured to review the active batch run and report the resulting status counts. Continue to verify repository/Actions state rather than assuming success.
