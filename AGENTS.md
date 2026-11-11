@@ -10,6 +10,8 @@ This repository runs the CertPassly exam pipeline in GitHub Actions. All AI codi
 - Workspace path: `workspace/`
 - Pin currently used by the workflow: `13dea6bab662ab1c4bbf87017e912e519907c8bc`
 
+Also read this repository's [operations handbook](docs/CERTPASSLY-OPERATIONS.md), [upstream revision status](docs/UPSTREAM_STATUS.md) and [work log](docs/WORK-LOG.md) before each session or code change. Their reports must be treated as claims to verify, not proof by themselves.
+
 Read these files **from the pinned skill revision** before performing work:
 1. `certpassly-exam-pipeline/AGENTS.md`
 2. `certpassly-exam-pipeline/docs/AI-OPERATOR-GUIDE.md`
@@ -34,7 +36,7 @@ The skill is NOT automatically available in a chat AI's system context. An agent
 
 ## Workflow behavior
 
-The Actions workflow checks out the pinned public skill into a separate directory, installs Python dependencies, runs `certpassly-pipeline --help`, and runs regression tests. It does not permanently install the skill into ChatGPT or copy the skill code into this repository.
+The Actions workflow checks out the pinned public skill into a separate directory, installs Python dependencies, runs `certpassly-pipeline --help`, runs regression tests, and runs two synthetic end-to-end demo pipelines with import conformance checks. It does not permanently install the skill into ChatGPT or copy the skill code into this repository.
 
 To run manually: open Actions > CertPassly skill environment > Run workflow.
 
