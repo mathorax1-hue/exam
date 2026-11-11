@@ -124,6 +124,10 @@ class OverlayTests(unittest.TestCase):
             rows = list(csv.DictReader(fh))
         self.assertTrue(all(x["author_key"] == "CertPassly Team" for x in rows))
         self.assertTrue(all(x["publication_state"] == "draft" for x in rows))
+        self.assertTrue(all("owner_file slot" in x["created_source"]
+                            and "SUPERSEDED" in x["created_source"]
+                            and "CertPassly Team ORIGINAL" in x["created_source"]
+                            for x in rows))
 
 
 if __name__ == "__main__":
