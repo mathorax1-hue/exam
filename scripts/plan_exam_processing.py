@@ -28,10 +28,14 @@ def main():
     ap.add_argument("--lookup", type=Path, required=True)
     ap.add_argument("--target", choices=["all", "one"], default="all")
     ap.add_argument("--exam", default="")
+    ap.add_argument("--start-index", type=int, default=0,
+                    help="Skip this many eligible exams to select a later private-minutes batch")
     ap.add_argument("--max-exams", type=int, default=2,
                     help="Maximum expensive private exam-processing jobs per run, 1-3")
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
+    if args.start_index < 0:
+        raise SystemExit("--start-index must be nonnegative")
     if not 1 <= args.max_exams <= 3:
         raise SystemExit("--max-exams must be between 1 and 3; private Actions minutes are limited")
     root = args.raw_root.resolve()
@@ -47,6 +51,7 @@ def main():
 
     plan = []
     matrix = []
+    eligible_seen = 0
     for path in paths:
         exam = path.parent.name
         item = {"exam": exam, "status": "blocked", "reasons": []}
@@ -98,16 +103,23 @@ def main():
         item["vendor"] = vendor
         item["has_authoring"] = any((path.parent / "authoring").glob("*.json"))
         if not item["reasons"]:
-            if len(matrix) < args.max_exams:
+            if eligible_seen < args.start_index:
+                item["status"] = "deferred_budget"
+                item["reasons"] = ["already_before_selected_budget_window"]
+            elif len(matrix) < args.max_exams:
                 item["status"] = "queued"
                 matrix.append({"exam": exam})
             else:
                 item["status"] = "deferred_budget"
                 item["reasons"] = ["private_runner_budget_cap_reached"]
+            eligible_seen += 1
         plan.append(item)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    report = {"target": args.target, "requested_exam": args.exam, "total": len(plan),
+    report = {"target": args.target, "requested_exam": args.exam,
+              "start_index": args.start_index,
+              "next_start_index": args.start_index + len(matrix),
+              "total": len(plan),
               "queued": len(matrix),
               "eligible_total": sum(x["status"] in ("queued", "deferred_budget") for x in plan),
               "deferred_budget": sum(x["status"] == "deferred_budget" for x in plan),
