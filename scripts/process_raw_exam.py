@@ -80,7 +80,6 @@ def main():
         "pdfs": [],
         "ready_for_promotion": False,
     }
-    record_output("ready", "false")
     try:
         if not RX.fullmatch(code):
             raise ValueError("invalid_exam_code")
@@ -226,11 +225,11 @@ def main():
             shutil.copyfile(report, resdir / report.name)
             result["status"] = "validated_draft"
             result["ready_for_promotion"] = True
-            record_output("ready", "true")
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
         result["status"] = "blocked_input_or_gate"
         result["reason"] = str(exc)[:220]
 
+    record_output("ready", "true" if result["ready_for_promotion"] else "false")
     write_json(resdir / "status.json", result)
     # Store only the owner-authorized pre-author working files in *private*
     # Actions artifacts. Never upload the source PDF again or commit raw extracts.
