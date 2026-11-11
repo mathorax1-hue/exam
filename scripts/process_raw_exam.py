@@ -124,11 +124,18 @@ def main():
         (ws / "config").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(skill / "config" / "pipeline.example.yaml", ws / "config" / "pipeline.yaml")
         shutil.copyfile(skill / "config" / "vendors.example.yaml", ws / "config" / "vendors.yaml")
-        import yaml
         cfg_file = ws / "config" / "pipeline.yaml"
-        config = yaml.safe_load(cfg_file.read_text(encoding="utf-8"))
-        config["owner_rights_statement"] = rights
-        cfg_file.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True), encoding="utf-8")
+        # Upstream uses a restricted YAML parser, so never round-trip its
+        # configuration through a general YAML serializer. Preserve its
+        # original multiline text and replace only this one scalar.
+        original = cfg_file.read_text(encoding="utf-8")
+        marker = 'owner_rights_statement: ""'
+        if original.count(marker) != 1:
+            raise ValueError("upstream_owner_rights_configuration_marker_changed")
+        cfg_file.write_text(
+            original.replace(marker, "owner_rights_statement: " + json.dumps(rights), 1),
+            encoding="utf-8",
+        )
         with (ws / "catalog.csv").open("w", newline="", encoding="utf-8") as outfile:
             writer = csv.DictWriter(outfile, fieldnames=COLUMNS)
             writer.writeheader()
