@@ -98,3 +98,12 @@ For later changes, record: date, what was changed, why, commit SHA, CI URL/resul
 - Created [private raw-exam issue #1](https://github.com/mathorax1-hue/raw-exam/issues/1), tracking 185 source folders, 139 blocked mappings/source choices, unresolved official research, AI/human authoring and token-gated validated drafts.
 - Changed the existing one-time assistant review into a daily conditional readiness monitor starting November 11, 2026 at 20:00 Pakistan time. It checks CI, statuses, output evidence and user-action blockers and only claims completion on actual proof.
 - A working `CERTPASSLY_REPOS_PAT` in private `raw-exam` Actions secrets remains necessary for validated packages to be pushed to private `ready-exams`. No credential value was requested or recorded.
+
+## 2026-11-11: Verified real pre-author progress and destination access
+
+- Private raw processing [run 43031064207](https://github.com/mathorax1-hue/raw-exam/actions/runs/43031064207) demonstrates the hash-verified Microsoft name fix works. Specifically, **AB-900** and **AI-103** completed all eight real preparation stages with exit 0. Both are **needs_author**, not ready or published.
+- AB-900: 89 source items, 37 text-visible answer keys, 52 visual items (25 candidate image keys, 27 without parsed visual key), and one undecided spelling correction on q050. The original source remains private. Private [review checklist](https://github.com/mathorax1-hue/raw-exam/blob/main/exams/AB-900/REVIEW-CHECKLIST.md) and [issue #2](https://github.com/mathorax1-hue/raw-exam/issues/2) identify the remaining work.
+- AI-103: 130 extracted source items, 90 text-visible answers and 36 visual items without machine-read candidate keys. The [private checklist](https://github.com/mathorax1-hue/raw-exam/blob/main/exams/AI-103/REVIEW-CHECKLIST.md) records the IDs requiring human transcription.
+- Re-ran private [destination-PAT verification](https://github.com/mathorax1-hue/raw-exam/actions/runs/43024897974), **attempt 2**; the job completed **success**, confirming private `ready-exams` access. No token value was revealed or stored.
+- Updated the private [completion tracker issue #1](https://github.com/mathorax1-hue/raw-exam/issues/1) with these verified milestones. Remaining blocked source mappings, owner answer review, AI authoring and downstream checks must be completed before a draft can be promoted.
+- The daily conditional readiness monitor checks for meaningful progress or user-action blockers. It is not a substitute for actual human review or publication sign-off.
