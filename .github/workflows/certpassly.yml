@@ -76,6 +76,18 @@ jobs:
         working-directory: certpassly-exam-pipeline
         run: python -m unittest discover -s tests -v
 
+      - name: Run full synthetic demo pipelines (no owner data)
+        working-directory: certpassly-exam-pipeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tests/demo_kit.py microsoft "$RUNNER_TEMP/certpassly-demo-ms"
+          certpassly-pipeline --exam DM-101 --root "$RUNNER_TEMP/certpassly-demo-ms" --offline --date 2026-11-11
+          python scripts/check_import_conformance.py --root "$RUNNER_TEMP/certpassly-demo-ms" --exam DM-101
+          python tests/demo_kit.py salesforce "$RUNNER_TEMP/certpassly-demo-generic"
+          certpassly-pipeline --exam Demo-Admn-101 --root "$RUNNER_TEMP/certpassly-demo-generic" --offline --date 2026-11-11
+          python scripts/check_import_conformance.py --root "$RUNNER_TEMP/certpassly-demo-generic" --exam Demo-Admn-101
+
       - name: Run an exam (manual pipeline mode only)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_mode == 'pipeline' }}
         shell: bash
@@ -92,11 +104,15 @@ jobs:
           if [[ "$OFFLINE" == "true" ]]; then args+=(--offline); fi
           certpassly-pipeline "${args[@]}"
 
-      - name: Upload generated workspace outputs
-        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run_mode == 'pipeline' }}
+      - name: Upload reviewed draft packages and reports (only after success)
+        if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.run_mode == 'pipeline' }}
         uses: actions/upload-artifact@v4
         with:
           name: certpassly-${{ github.run_id }}
-          path: repo/workspace/output/
-          if-no-files-found: ignore
+          path: |
+            repo/workspace/*-package.zip
+            repo/workspace/*-package.zip.scan.json
+            repo/workspace/out/*/VALIDATION.md
+            repo/workspace/out/*/REVIEW.md
+          if-no-files-found: warn
           retention-days: 7
