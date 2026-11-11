@@ -315,7 +315,13 @@ def identify_originals_after_bank(workspace: Path, code: str, overlay: dict):
         row["created_source"] = ("owner_file slot " + key
                                  + " SUPERSEDED; current question is CertPassly Team ORIGINAL "
                                  + replaced[key]["editorial_question_id"])
-        row["key_source"] = "certpassly_team_original_unverified"
+        # v1 enum "owner_file" means the key comes from a file controlled by
+        # this content owner. Here that file is the private ORIGINAL editorial
+        # replacement manifest, NEVER the superseded owner PDF answer.
+        row["key_source"] = "owner_file"
+        row["key_origin_file"] = "exams/" + code + "/authoring/original_editorial_replacements.json"
+        row["key_origin_note"] = "CertPassly Team original editorial key, not the owner PDF key"
+        row["owner_pdf_key_superseded"] = True
         row["original_editorial_id"] = replaced[key]["editorial_question_id"]
         row["owner_question_replaced"] = key
         row["editorial_reference_urls"] = replaced[key]["official_reference_urls"]
