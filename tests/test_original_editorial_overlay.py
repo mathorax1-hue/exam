@@ -118,7 +118,11 @@ class OverlayTests(unittest.TestCase):
         P.identify_originals_after_bank(self.root / "work", "AB-900", overlay)
         result = P.load_json(out / "questions.json")["questions"]
         self.assertTrue(all(x["human_review_required"] for x in result))
-        self.assertTrue(all(x["key_source"] == "certpassly_team_original_unverified"
+        self.assertTrue(all(x["key_source"] == "owner_file"
+                            for x in result))
+        self.assertTrue(all("original_editorial_replacements.json" in x["key_origin_file"]
+                            and x["owner_pdf_key_superseded"] is True
+                            and x["key_origin_note"] == "CertPassly Team original editorial key, not the owner PDF key"
                             for x in result))
         with csv_path.open(newline="", encoding="utf-8") as fh:
             rows = list(csv.DictReader(fh))
