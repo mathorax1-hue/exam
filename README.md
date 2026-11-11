@@ -8,18 +8,17 @@ It does **not** contain a vendored copy of the upstream proprietary skill. GitHu
 
 1. [AI agent instructions](AGENTS.md) explain what agents must read and what they must never do.
 2. [Operations handbook](docs/CERTPASSLY-OPERATIONS.md) has the full local runbook, stage map, author files, security policies and completion checklist.
-3. [Skill installation and demo tests](.github/workflows/certpassly.yml) run in GitHub Actions, with an option for a configured real exam.
+3. [Skill installation and full synthetic demos](.github/workflows/certpassly.yml) run in free public GitHub Actions only. They never use owner PDFs or answer keys.
 4. [Upstream revision status](docs/UPSTREAM_STATUS.md) records new source revisions without silently upgrading them.
 5. [Repository work log](docs/WORK-LOG.md) contains decisions, evidence, unresolved items and changes.
 
-## Execute
+## Run public QA
 
-Visit [GitHub Actions](https://github.com/mathorax1-hue/exam/actions/workflows/certpassly.yml), choose **Run workflow**, and select **verify** to install, run Python tests, run both synthetic demo pipelines, and check the demo import files.
+The public [CertPassly synthetic QA](.github/workflows/certpassly.yml) workflow runs pinned skill regression tests, two complete synthetic demo pipelines and their import checks. It runs weekly or manually. [Public processor tests](.github/workflows/test-processor.yml) run on changes to processor code and tests.
 
-Real `pipeline` runs need properly configured workspace inputs and confirmed usage rights. The `author` stage requires separate AI/human-authored files and will stop if they are absent. It is not a hosted AI service.
+Real owner-PDF processing happens only in the private `raw-exam` Actions workflow. It is manually triggered, runs one exam by default, has a strict limit of three exam jobs, and uses `start_index` to page through eligible sources. GitHub Actions compute in a private caller is still private-billed even if it invokes public reusable workflow code.
 
-No real exam questions, private owner PDFs, or private Drive links belong in Git commits to this public repository. Do not treat the synthetic demo as a real exam or the static import checker as a live-site import test.
-
+Original editorial content uses the **CertPassly Team** byline. See [AI editorial policy](docs/AI-EDITORIAL-POLICY.md). It records AI-assisted draft status, source evidence and pending human review.
 ## Private raw → processing → private ready workflow
 
 The production-style batch workflow is in [private raw-exam Actions](https://github.com/mathorax1-hue/raw-exam/actions/workflows/process-exams.yml). It runs **from** the private raw-exam repo, checks out public processor scripts at a reviewed commit, and installs the pinned upstream skill. Only the matching exam's PDF is fetched from Git LFS, SHA-256 verified and copied into a temporary runner workspace.
