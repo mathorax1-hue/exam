@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/certpassly.yml"
-      - "scripts/**"
-      - "tests/**"
   workflow_dispatch:
   schedule:
     - cron: "30 2 * * 1"
+
+concurrency:
+  group: public-certpassly-synthetic-qa
+  cancel-in-progress: true
 
 permissions:
   contents: read
