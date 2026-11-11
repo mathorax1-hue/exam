@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import sys
 
-STAGE_PRE = ["catalog", "intake", "sources", "research", "extract",
+STAGE_PRE = ["catalog", "intake", "extract", "sources", "research",
              "textfix", "answer_research", "intent"]
 STAGE_POST = ["author", "pages", "writing", "import", "bank", "validate", "package"]
 COLUMNS = ["vendor", "vendor_slug", "certification", "exam_code", "exam_name",
@@ -157,6 +157,41 @@ def main():
                     rc = ran.returncode
                 except subprocess.TimeoutExpired:
                     rc = 124
+            # Official vendor pages may require JavaScript rendering.
+            # Install only the skill's documented optional browser extra when
+            # a plain source fetch explicitly reports that rendering is absent.
+            if name == "sources" and rc and log_file.is_file():
+                failure = log_file.read_text(encoding="utf-8", errors="replace")
+                if "rendering is not available" in failure:
+                    setup = resdir / "source-render-setup.log"
+                    with setup.open("w", encoding="utf-8") as setup_out:
+                        commands = [
+                            [sys.executable, "-m", "pip", "install", "-e", str(skill) + "[render]"],
+                            [sys.executable, "-m", "playwright", "install", "chromium"],
+                        ]
+                        ready = True
+                        for install_cmd in commands:
+                            try:
+                                p = subprocess.run(install_cmd, stdout=setup_out,
+                                                   stderr=subprocess.STDOUT, timeout=900)
+                            except subprocess.TimeoutExpired:
+                                ready = False
+                                break
+                            if p.returncode:
+                                ready = False
+                                break
+                    if ready:
+                        with log_file.open("a", encoding="utf-8") as out:
+                            out.write("\nRetrying official source retrieval with headless Chromium.\n")
+                            try:
+                                retry = subprocess.run(cmd, stdout=out, stderr=subprocess.STDOUT,
+                                                       cwd=str(skill), timeout=3300)
+                                rc = retry.returncode
+                            except subprocess.TimeoutExpired:
+                                rc = 124
+                        result["source_render_retry"] = True
+                    else:
+                        result["source_render_retry"] = False
             result["stages"].append({"name": name, "exit_code": rc})
             print(f"{code}: stage {name} exit {rc}", flush=True)
             return rc
@@ -164,7 +199,7 @@ def main():
         for name in STAGE_PRE:
             rc = stage(name)
             if rc:
-                result["status"] = "blocked_stage"
+                result["status"] = "needs_official_sources" if name in ("sources", "research") else "blocked_stage"
                 result["reason"] = name + "_failed"
                 break
 
@@ -240,7 +275,7 @@ def main():
     write_json(resdir / "status.json", result)
     # Store only the owner-authorized pre-author working files in *private*
     # Actions artifacts. Never upload the source PDF again or commit raw extracts.
-    if result["status"] == "needs_author":
+    if result["status"] in ("needs_author", "needs_official_sources", "blocked_stage"):
         p = ws / "out" / code
         if p.is_dir():
             bundle = resdir / "preauthor"
