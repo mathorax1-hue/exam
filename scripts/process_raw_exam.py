@@ -10,6 +10,7 @@ import argparse
 import csv
 from datetime import datetime, timezone
 import hashlib
+import html
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,84 @@ import sys
 
 STAGE_PRE = ["catalog", "intake", "extract", "sources", "research",
              "textfix", "answer_research", "intent"]
+
+def verified_microsoft_certification_name(workspace: Path, exam: str):
+    """Return (name, URL, SHA) only when a saved Microsoft certification page contains the name.
+
+    Never infers a name from an exam code or an unsourced file title.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{1,79}", exam):
+        return None
+    sources_path = workspace / "research" / "microsoft" / f"{exam}.sources.json"
+    if not sources_path.is_file():
+        return None
+    try:
+        spec = json.loads(sources_path.read_text(encoding="utf-8"))
+        cp_urls = [r.get("url") for r in spec.get("sources", [])
+                   if r.get("id") == "cp"]
+    except (ValueError, OSError, TypeError):
+        return None
+    for url in cp_urls:
+        from urllib.parse import urlparse
+        parsed = urlparse(str(url or ""))
+        if (parsed.scheme != "https"
+            or parsed.hostname != "learn.microsoft.com"
+            or not re.search(r"/credentials/certifications/(?:exams/|[^/]+/?$)", parsed.path, re.I)):
+            continue
+        for sidecar in (workspace / "sources" / "microsoft").glob("*.html.json"):
+            try:
+                meta = json.loads(sidecar.read_text(encoding="utf-8"))
+                if meta.get("url", "").lower().rstrip("/") != url.lower().rstrip("/"):
+                    continue
+                snapshot = sidecar.with_suffix("")
+                if not snapshot.is_file() or sha256(snapshot) != meta.get("sha256"):
+                    continue
+                body = snapshot.read_text(encoding="utf-8", errors="replace")
+                matches = re.findall(r"<h1\b[^>]*>(.*?)</h1\s*>", body, re.I | re.S)
+                for section in matches:
+                    candidate = html.unescape(re.sub(r"<[^>]+>", " ", section))
+                    candidate = re.sub(r"\s+", " ", candidate).strip()
+                    if (not 12 <= len(candidate) <= 180
+                        or not re.match(r"^Microsoft(?:\s|[-:])", candidate, re.I)
+                        or "study guide" in candidate.lower()):
+                        continue
+                    # Match exactly the official text on this saved page, using
+                    # the same plain-tag normalization used by upstream research.
+                    norm = lambda x: re.sub(r"\s+", " ", html.unescape(x).replace("\u2019", "'")
+                                          .replace("\u2013", "-").replace("\u2014", "-")).strip().lower()
+                    if norm(candidate) not in norm(re.sub(r"<[^>]+>", " ", body)):
+                        continue
+                    return candidate, url, meta["sha256"]
+            except (OSError, ValueError, TypeError, KeyError):
+                continue
+    return None
+
+
+def add_verified_official_name(workspace: Path, exam: str, vendor: str, result_dir: Path):
+    """Write only a sourced Microsoft name into the temporary per-exam catalog."""
+    if vendor != "microsoft":
+        return False
+    verified = verified_microsoft_certification_name(workspace, exam)
+    if not verified:
+        return False
+    name, url, expected_sha = verified
+    catalog = workspace / "catalog.csv"
+    with catalog.open("r", newline="", encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    if len(rows) != 1 or rows[0].get("exam_code") != exam:
+        raise ValueError("Unexpected per-exam catalog while setting sourced title")
+    rows[0]["exam_name"] = name
+    with catalog.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+    write_json(result_dir / "official-name-evidence.json",
+               {"exam": exam, "official_exam_name": name,
+                "official_page_url": url, "saved_html_sha256": expected_sha})
+    print(f"{exam}: recorded a name backed by the saved official Microsoft page")
+    return True
+
+
 STAGE_POST = ["author", "pages", "writing", "import", "bank", "validate", "package"]
 COLUMNS = ["vendor", "vendor_slug", "certification", "exam_code", "exam_name",
            "sheet_status", "drive_folder_url", "sheet_cell", "sheet_label",
@@ -198,6 +277,8 @@ def main():
 
         for name in STAGE_PRE:
             rc = stage(name)
+            if name == "sources" and rc == 0:
+                add_verified_official_name(ws, code, vendor, resdir)
             if rc:
                 result["status"] = "needs_official_sources" if name in ("sources", "research") else "blocked_stage"
                 result["reason"] = name + "_failed"
