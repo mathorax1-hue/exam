@@ -1,6 +1,6 @@
 # CertPassly exam workspace
 
-This private repository is the control and operating workspace for the [CertPassly exam pipeline](https://github.com/msaqlainhaneef1/certpassly-exam-pipeline).
+This **public code-only repository** is the control and operating workspace for the [CertPassly exam pipeline](https://github.com/msaqlainhaneef1/certpassly-exam-pipeline).
 
 It does **not** contain a vendored copy of the upstream proprietary skill. GitHub Actions checks out a pinned upstream revision and installs it temporarily on a runner.
 
@@ -18,7 +18,17 @@ Visit [GitHub Actions](https://github.com/mathorax1-hue/exam/actions/workflows/c
 
 Real `pipeline` runs need properly configured workspace inputs and confirmed usage rights. The `author` stage requires separate AI/human-authored files and will stop if they are absent. It is not a hosted AI service.
 
-No real exam questions or private owner PDFs belong in Git commits. Do not treat the synthetic demo as a real exam or the static import checker as a live-site import test.
+No real exam questions, private owner PDFs, or private Drive links belong in Git commits to this public repository. Do not treat the synthetic demo as a real exam or the static import checker as a live-site import test.
+
+## Private raw → processing → private ready workflow
+
+The production-style batch workflow is in [private raw-exam Actions](https://github.com/mathorax1-hue/raw-exam/actions/workflows/process-exams.yml). It runs **from** the private raw-exam repo, checks out public processor scripts at a reviewed commit, and installs the pinned upstream skill. Only the matching exam's PDF is fetched from Git LFS, SHA-256 verified and copied into a temporary runner workspace.
+
+The [planner](scripts/plan_exam_processing.py) records all source directories; sources with missing official exam mapping, ambiguous aliases or multiple PDFs are blocked for review. The [per-exam runner](scripts/process_raw_exam.py) completes catalog through intent, then stops at `needs_author` when reviewed authoring files are absent. The skill does not invoke an AI model itself.
+
+An exam can be promoted to [private ready-exams](https://github.com/mathorax1-hue/ready-exams) **only after** the author files are supplied and author, pages, writing, import, bank, validate, conformance and package scan pass. The private raw repository keeps per-run status dashboards in `reports/processing/`. No source PDF or incomplete draft is promoted.
+
+The `CERTPASSLY_REPOS_PAT` secret must be configured in the **private raw-exam** repository's Actions secrets, with Contents read/write access to private `ready-exams` for gated cross-repo promotion. Do not copy PATs into public files.
 
 ## Real exam intake without committing owner PDFs
 
