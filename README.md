@@ -20,6 +20,14 @@ Real `pipeline` runs need properly configured workspace inputs and confirmed usa
 
 No real exam questions or private owner PDFs belong in Git commits. Do not treat the synthetic demo as a real exam or the static import checker as a live-site import test.
 
+## Real exam intake without committing owner PDFs
+
+The [secure exam intake workflow](.github/workflows/exam-intake.yml) accepts the exam code, official vendor, an owner-authorized Drive **folder** URL and a rights confirmation during a manual GitHub Actions run. It creates a temporary workspace, executes the pre-author stages using the pinned skill and uploads only a metadata summary, not the PDF or extracted questions.
+
+**Important:** The Google Drive folder must be readable by the GitHub runner without ChatGPT's connected Google Drive account. A link that only works through a private Google login will fail. Workflow inputs are recorded in GitHub Actions run metadata, so treat folder URLs as sensitive and use only folders you are permitted to share with that runner. This job does not complete the required AI author stage or produce a final exam package.
+
+AB-900 intake findings: [docs/AB-900-INTAKE.md](docs/AB-900-INTAKE.md).
+
 ## Maintenance
 
 The separate [upstream-watch workflow](.github/workflows/upstream-watch.yml) checks upstream main on Mondays at 08:00 UTC. It commits a change to the **revision status document only if the upstream SHA or reviewed pin changed**. It does not auto-upgrade executable code. Any changes to the pin require an explicit review and new tests.
