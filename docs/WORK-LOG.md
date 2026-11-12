@@ -123,3 +123,14 @@ For later changes, record: date, what was changed, why, commit SHA, CI URL/resul
 - Remaining reality: 185 raw source folders, zero independently verified ready releases at last check. Mapping gaps, visual answer review, full AI author JSON and validation still need completion; publication is separate.
 
 - Follow-up: the private source job's `exam-result-*` artifacts remain available for 14 days for grounded AI writing, while lightweight inventory artifacts expire after 3 days. This preserves authoring evidence without repeatedly spending private runner minutes.
+
+
+## 2026-11-12: Reusable evidence tools and private recovery workflow
+
+- Central skill source remains public \`msaqlainhaneef1/certpassly-exam-pipeline\` at pinned revision \`13dea6bab662ab1c4bbf87017e912e519907c8bc\`. Connected accounts currently have read but not direct push permission there; **this is not an upstream skill commit**.
+- Added \`scripts/audit_question_evidence.py\` at commit \`7233b418a27a20775069f6195b6525c4b57cc45e\`, with synthetic tests committed at \`3060dacb1d70685e86811e2ba7560c07fcf72263\`. It distinguishes AI source-supported checks from final approvals and fails closed on missing proof, unsigned review, record mismatches or unresolved conflicts.
+- Added \`scripts/unpack_artifact_tree.py\` at commit \`e14d0f58f823506d7fbecfea8de011af9eef07a9\`, with synthetic tests committed at \`b73e57d9841f3e43d515af83f331f5d4bd009f12\`. It turns nested ZIP artifacts into plain directories with SHA-256 file manifests and guards against unsafe paths and collisions. The extraction ZIP is input only, not a committed output.
+- Both tools use **Python standard library only**; no new pip dependencies, credentials or private owner data. Ten synthetic tests passed locally. Public processor test Action \`43183489036\` concluded success on commit \`b73e57d9841f3e43d515af83f331f5d4bd009f12\`.
+- Upstream migration still needed: maintainer-authorized commit of these generic scripts and tests to the main skill repo, update AGENTS.md/HANDOVER.md/operator guide, run upstream tests on Linux and Windows, and then explicitly review the raw-exam workflow pin. Do not silently repin or claim the upstream skill has been upgraded.
+- Private AB-900 recovery snapshot has a separate handover at \`raw-exam/docs/AI-SESSION-HANDOVER.md\`. Do not move its question records, screenshots, archive, or private chat content into this public repo.
+- This tooling is supplementary. It cannot bypass image/answer review, official source SHA-256 evidence, owner key conflicts, writing and bank gates, independent proof verification or site publication approval.
