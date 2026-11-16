@@ -48,5 +48,30 @@ class EvidenceBuilderTests(unittest.TestCase):
             self.assertEqual(0, proof["scoring_excluded_count"])
 
 
+    def test_blocked_evidence_audit_downgrades_release_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            release_file = Path(tmp) / "release.json"
+            provisional = {
+                "exam": "AB-900",
+                "status": "validated_draft",
+                "published": False,
+                "package_sha256": "a" * 64,
+            }
+            problems = ["unresolved_question_review:flagged_accuracy_count=89"]
+            result = E.mark_blocked_release(release_file, provisional, problems)
+            persisted = json.loads(release_file.read_text(encoding="utf-8"))
+
+            self.assertEqual("needs_human_or_evidence_review", result["status"])
+            self.assertEqual("needs_human_or_evidence_review", persisted["status"])
+            self.assertEqual("blocked", persisted["evidence_quality_gate"])
+            self.assertEqual(problems, persisted["evidence_blockers"])
+            self.assertFalse(persisted["ready_for_promotion"])
+            self.assertFalse(persisted["ready_for_publication"])
+            self.assertFalse(persisted["published"])
+            self.assertEqual("draft", persisted["publication_state"])
+            self.assertEqual("validated_draft", provisional["status"])
+
+
+
 if __name__ == "__main__":
     unittest.main()
