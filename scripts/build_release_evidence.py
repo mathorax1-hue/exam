@@ -175,6 +175,29 @@ def audit_active_visual_roles(split: dict, role_manifest: dict) -> dict:
     }
 
 
+def mark_blocked_release(release_file: Path, release: dict, problems: list[str]):
+    """Keep release metadata fail-closed when the evidence audit finds blockers.
+
+    process_raw_exam.py creates a provisional release.json after script-level
+    validation. This final audit can still reject it; persist that decision in
+    both status.json and release.json so downstream readers cannot mistake the
+    provisional label for an evidence-backed validated draft.
+    """
+    blocked = dict(release)
+    blocked.update({
+        "status": "needs_human_or_evidence_review",
+        "publication_state": "draft",
+        "published": False,
+        "human_review_status": "pending",
+        "ready_for_publication": False,
+        "ready_for_promotion": False,
+        "evidence_quality_gate": "blocked",
+        "evidence_blockers": list(problems),
+    })
+    write_json(release_file, blocked)
+    return blocked
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--raw-root", required=True, type=Path)
@@ -371,6 +394,7 @@ def main():
         status["reason"] = "; ".join(problems)[:1000]
         status["ready_for_promotion"] = False
         status["audit_blockers"] = problems
+        release = mark_blocked_release(release_file, release, problems)
         write_json(results, status)
         add_output(False)
         print(f"{code}: not promoted; {len(problems)} evidence or review blockers: {'; '.join(problems)}")
