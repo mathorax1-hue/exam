@@ -1,9 +1,11 @@
 # CertPassly operations and handoff
 
-Last reviewed: 2026-11-11
-Workspace repository: `mathorax1-hue/exam` (private)
+Last reviewed: 2026-11-17
+Workspace repository: `mathorax1-hue/exam` (public, code-only)
 Upstream skill: https://github.com/msaqlainhaneef1/certpassly-exam-pipeline
 Pinned upstream revision: `13dea6bab662ab1c4bbf87017e912e519907c8bc`
+
+GitHub currently reports this repository as **public**. Treat every commit and artifact here as public. Owner PDFs, question text, answer keys, private source links, credentials, authoring drafts and exam packages must remain in private `raw-exam` / `ready-exams` or approved private storage.
 
 This is an operational summary for this workspace, **not** a redistribution of the upstream proprietary skill. Always read the original upstream `AGENTS.md`, `SKILL.md`, `docs/AI-OPERATOR-GUIDE.md`, `docs/AI-TRAINING-EXERCISES.md`, `reference/lessons-learned.md`, `reference/writing-brief.md`, and `HANDOVER.md` at the exact pinned revision before a real run. Use `AGENTS.md` here as the entry point.
 
