@@ -1,92 +1,126 @@
 name: Three-phase exam run
 
-# Real owner PDFs must be processed from private raw-exam, which calls this
-# reusable workflow. A dispatch on this public repo is refused so question
-# text never appears in public logs.
+# Runs in this public repository so GitHub bills the free public minutes.
+# Owner PDFs stay in private raw-exam. Results are pushed back to raw-exam.
+# Logs print only counts and pass/fail. No pull_request or pull_request_target
+# triggers. Forks do not receive this repository's secrets.
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       exam_code:
+        description: "Exact exams/ folder name in private raw-exam"
         required: true
         type: string
       promote:
+        description: "Promote to ready-exams only if every gate already passed (default false)"
         required: false
         type: boolean
         default: false
       skill_ref:
+        description: "certpassly-exam-skill ref (commit SHA preferred)"
         required: false
         type: string
         default: main
       use_committed_ai_reads:
-        description: "Use committed review/ai-reads.json when present. Set false so the live provider does the reads."
+        description: "Use committed review/ai-reads.json when present"
         required: false
         type: boolean
         default: true
       ai_vision_provider:
-        description: "AI vision provider. Default none. Private raw-exam may pass groq."
+        description: "AI vision provider. Default none on the public runner."
         required: false
         type: string
         default: none
-    secrets:
-      CERTPASSLY_REPOS_PAT:
-        required: true
-      GROQ_API_KEY:
-        required: false
-  workflow_dispatch:
-    inputs:
-      exam_code:
-        description: "Exam code (real runs must be started from private raw-exam)"
-        required: true
-        type: string
-      promote:
-        description: "Promote only if every gate already passed (default false)"
-        required: false
-        type: boolean
-        default: false
+  repository_dispatch:
+    types: [three-phase-exam]
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: three-phase-${{ github.repository }}-${{ inputs.exam_code }}
+  group: three-phase-exam-${{ github.event.client_payload.exam_code || inputs.exam_code || github.run_id }}
   cancel-in-progress: false
 
 jobs:
-  refuse-public:
-    if: ${{ github.event.repository.private == false }}
+  refuse:
+    if: ${{ github.repository != 'mathorax1-hue/exam' || github.event.repository.fork == true || (github.event_name != 'workflow_dispatch' && github.event_name != 'repository_dispatch') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: Refuse a real exam on the public repository
+      - name: Refuse a non-owner or forked run
         run: |
-          echo "Real owner exams must be started from private raw-exam so question text never appears in public logs."
-          echo "Open: https://github.com/mathorax1-hue/raw-exam/actions/workflows/three-phase-exam.yml"
+          echo "This workflow only runs on owner-triggered workflow_dispatch or repository_dispatch in mathorax1-hue/exam."
           exit 1
 
   run:
-    if: ${{ github.event.repository.private == true }}
+    if: ${{ github.repository == 'mathorax1-hue/exam' && github.event.repository.fork == false && (github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
-      contents: write
+      contents: read
+      actions: read
+    outputs:
+      exam_code: ${{ steps.params.outputs.exam_code }}
+      results_pushed: ${{ steps.save.outputs.results_pushed }}
     env:
-      EXAM_CODE: ${{ inputs.exam_code }}
-      PROMOTE: ${{ inputs.promote }}
       UPSTREAM_PIN: d9b6bf67efb870019dd88caeffa90952b7e000d3
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      CERTPASSLY_AI_VISION_PROVIDER: ${{ inputs.ai_vision_provider }}
-      CERTPASSLY_AI_VISION_ENABLED: ${{ inputs.ai_vision_provider == 'groq' }}
-      CERTPASSLY_USE_COMMITTED_AI_READS: ${{ inputs.use_committed_ai_reads }}
     steps:
-      - name: Check exam code
+      - name: Check owner trigger and exam code
+        id: params
+        env:
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_CODE: ${{ inputs.exam_code }}
+          INPUT_PROMOTE: ${{ inputs.promote }}
+          INPUT_SKILL: ${{ inputs.skill_ref }}
+          INPUT_READS: ${{ inputs.use_committed_ai_reads }}
+          INPUT_PROVIDER: ${{ inputs.ai_vision_provider }}
+          PAYLOAD_CODE: ${{ github.event.client_payload.exam_code }}
+          PAYLOAD_PROMOTE: ${{ github.event.client_payload.promote }}
+          PAYLOAD_SKILL: ${{ github.event.client_payload.skill_ref }}
+          PAYLOAD_READS: ${{ github.event.client_payload.use_committed_ai_reads }}
+          PAYLOAD_PROVIDER: ${{ github.event.client_payload.ai_vision_provider }}
         run: |
           python3 - <<'PY'
           import os, re, sys
-          code = os.environ["EXAM_CODE"].strip()
+          if os.environ.get("ACTOR") != os.environ.get("OWNER"):
+              sys.exit("only the repository owner may start this run")
+          if os.environ.get("EVENT_NAME") == "repository_dispatch":
+              code = (os.environ.get("PAYLOAD_CODE") or "").strip()
+              promote = str(os.environ.get("PAYLOAD_PROMOTE") or "false").strip().lower()
+              skill = (os.environ.get("PAYLOAD_SKILL") or "main").strip() or "main"
+              reads = str(os.environ.get("PAYLOAD_READS") or "true").strip().lower()
+              provider = (os.environ.get("PAYLOAD_PROVIDER") or "none").strip().lower() or "none"
+          else:
+              code = (os.environ.get("INPUT_CODE") or "").strip()
+              promote = str(os.environ.get("INPUT_PROMOTE") or "false").strip().lower()
+              skill = (os.environ.get("INPUT_SKILL") or "main").strip() or "main"
+              reads = str(os.environ.get("INPUT_READS") or "true").strip().lower()
+              provider = (os.environ.get("INPUT_PROVIDER") or "none").strip().lower() or "none"
           if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{1,39}", code):
               sys.exit("Invalid exam code")
-          print("exam_code_ok")
+          if not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", skill):
+              sys.exit("Invalid skill ref")
+          if promote not in ("true", "false"):
+              sys.exit("Invalid promote flag")
+          if reads not in ("true", "false"):
+              sys.exit("Invalid use_committed_ai_reads flag")
+          if provider not in ("none", "groq", "off", "disabled"):
+              sys.exit("Invalid ai_vision_provider")
+          if provider in ("off", "disabled"):
+              provider = "none"
+          out = os.environ["GITHUB_OUTPUT"]
+          with open(out, "a", encoding="utf-8") as fh:
+              fh.write("exam_code=%s\n" % code)
+              fh.write("promote=%s\n" % promote)
+              fh.write("skill_ref=%s\n" % skill)
+              fh.write("use_committed_ai_reads=%s\n" % reads)
+              fh.write("ai_vision_provider=%s\n" % provider)
+          print("exam_code_ok billed_repository=mathorax1-hue/exam")
           PY
 
       - name: Check out private raw-exam
@@ -100,16 +134,18 @@ jobs:
 
       - name: Fetch only this exam PDF from Git LFS
         working-directory: raw
+        env:
+          EXAM_CODE: ${{ steps.params.outputs.exam_code }}
         run: |
           set -euo pipefail
-          git lfs install --local
-          git lfs pull --include="exams/${EXAM_CODE}/source/*" --exclude=""
+          git lfs install --local >/dev/null
+          git lfs pull --include="exams/${EXAM_CODE}/source/*" --exclude="" >/dev/null
 
       - name: Check out shared skill
         uses: actions/checkout@v4
         with:
           repository: mathorax1-hue/certpassly-exam-skill
-          ref: ${{ inputs.skill_ref }}
+          ref: ${{ steps.params.outputs.skill_ref }}
           path: skill
           persist-credentials: false
 
@@ -122,8 +158,7 @@ jobs:
           persist-credentials: false
 
       - name: Confirm upstream pin
-        run: |
-          test "$(git -C upstream rev-parse HEAD)" = "$UPSTREAM_PIN"
+        run: test "$(git -C upstream rev-parse HEAD)" = "$UPSTREAM_PIN"
 
       - name: Apply skill patches to pinned upstream
         run: |
@@ -153,47 +188,194 @@ jobs:
             sudo apt-get update -o Acquire::Retries=3
             sudo apt-get install -y -o Acquire::Retries=3 poppler-utils tesseract-ocr
           fi
-          echo "pdftotext:"; pdftotext -v 2>&1 | head -3 || true
-          echo "tesseract:"; tesseract --version 2>&1 | head -3 || true
+          echo "pdftotext_ok tesseract_ok"
 
       - name: Install pinned upstream
-        run: python -m pip install -e ./upstream
+        run: python -m pip install -q -e ./upstream
 
-      - name: Run three phases (no site sandbox in Actions)
+      - name: Check out ready-exams when promoting
+        if: ${{ steps.params.outputs.promote == 'true' }}
+        uses: actions/checkout@v4
+        with:
+          repository: mathorax1-hue/ready-exams
+          token: ${{ secrets.CERTPASSLY_REPOS_PAT }}
+          path: ready
+          persist-credentials: true
+
+      - name: Run three phases (quiet public log)
+        id: phase
         env:
           PYTHONUNBUFFERED: "1"
+          EXAM_CODE: ${{ steps.params.outputs.exam_code }}
+          PROMOTE: ${{ steps.params.outputs.promote }}
+          CERTPASSLY_AI_VISION_PROVIDER: ${{ steps.params.outputs.ai_vision_provider }}
+          CERTPASSLY_AI_VISION_ENABLED: ${{ steps.params.outputs.ai_vision_provider == 'groq' }}
+          CERTPASSLY_USE_COMMITTED_AI_READS: ${{ steps.params.outputs.use_committed_ai_reads }}
+          CERTPASSLY_PRIVATE_LOG: ${{ runner.temp }}/private-run.log
         run: |
           set -euo pipefail
+          echo "billed_repository=${GITHUB_REPOSITORY}"
           RAW_SHA="$(git -C raw rev-parse HEAD)"
+          PROMOTE_FLAG=()
+          if [ "$PROMOTE" = "true" ]; then
+            PROMOTE_FLAG=(--promote)
+          fi
+          READY_ROOT="$RUNNER_TEMP/ready-dry"
+          if [ -d "$GITHUB_WORKSPACE/ready" ]; then
+            READY_ROOT="$GITHUB_WORKSPACE/ready"
+          fi
+          set +e
           python skill/scripts/run_three_phase.py \
             --exam "$EXAM_CODE" \
             --workspace "$RUNNER_TEMP/work" \
             --upstream "$GITHUB_WORKSPACE/upstream" \
             --raw-dir "$GITHUB_WORKSPACE/raw/exams/$EXAM_CODE" \
             --exam-links "$GITHUB_WORKSPACE/raw/catalog/exam-links.csv" \
-            --ready-root "$GITHUB_WORKSPACE/ready" \
-            --raw-commit "$RAW_SHA"
-          python -m json.tool "$RUNNER_TEMP/work/out/$EXAM_CODE/phase-reports/public-summary.json"
+            --ready-root "$READY_ROOT" \
+            --raw-commit "$RAW_SHA" \
+            --private-log "$CERTPASSLY_PRIVATE_LOG" \
+            "${PROMOTE_FLAG[@]}"
+          PHASE_RC=$?
+          set -e
+          python skill/scripts/check_log_leak.py \
+            --log "$CERTPASSLY_PRIVATE_LOG" \
+            --site-file "$RUNNER_TEMP/work/out/$EXAM_CODE/$EXAM_CODE.site-format.v2.json" \
+            --export-dir "$RUNNER_TEMP/work/out/$EXAM_CODE/export" \
+            --raw-dir "$GITHUB_WORKSPACE/raw/exams/$EXAM_CODE" \
+            --output "$RUNNER_TEMP/work/out/$EXAM_CODE/phase-reports/leak-check-private-log.json"
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "$GITHUB_STEP_SUMMARY" ]; then
+            python skill/scripts/check_log_leak.py \
+              --log "$GITHUB_STEP_SUMMARY" \
+              --site-file "$RUNNER_TEMP/work/out/$EXAM_CODE/$EXAM_CODE.site-format.v2.json" \
+              --export-dir "$RUNNER_TEMP/work/out/$EXAM_CODE/export" \
+              --raw-dir "$GITHUB_WORKSPACE/raw/exams/$EXAM_CODE"
+          fi
+          exit "$PHASE_RC"
 
       - name: Save reports into private raw-exam
+        id: save
+        env:
+          EXAM_CODE: ${{ steps.params.outputs.exam_code }}
         run: |
           set -euo pipefail
           DEST="raw/exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}"
           mkdir -p "$DEST"
           cp -a "$RUNNER_TEMP/work/out/$EXAM_CODE/." "$DEST/"
-          # Keep the owner PDF only in source/; do not duplicate it here.
+          # Never copy the captured private log or the owner PDF into git.
           git -C raw add "exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}"
           if git -C raw diff --cached --quiet; then
+            echo "results_pushed=false" >> "$GITHUB_OUTPUT"
             echo "No new raw-exam files."
           else
             git -C raw config user.name "CertPassly Team"
             git -C raw config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git -C raw commit -m "results(${EXAM_CODE}): three-phase run ${GITHUB_RUN_ID}"
-            # Rebase if another exam's results landed first.
             git -C raw pull --rebase origin main
             git -C raw push origin HEAD:main
+            echo "results_pushed=true" >> "$GITHUB_OUTPUT"
+            echo "results_pushed=true"
           fi
 
-      - name: Public-safe summary
+      - name: Push ready-exams only when promoted
+        if: ${{ steps.params.outputs.promote == 'true' }}
+        env:
+          EXAM_CODE: ${{ steps.params.outputs.exam_code }}
         run: |
-          python -m json.tool "$RUNNER_TEMP/work/out/$EXAM_CODE/phase-reports/public-summary.json"
+          set -euo pipefail
+          REPORT="$RUNNER_TEMP/work/out/$EXAM_CODE/phase-reports/promotion.json"
+          STATUS="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("status") or "")' "$REPORT")"
+          echo "promotion_status=$STATUS"
+          if [ "$STATUS" != "promoted" ]; then
+            echo "ready-exams not updated"
+            exit 0
+          fi
+          git -C ready add "exams/${EXAM_CODE}"
+          if git -C ready diff --cached --quiet; then
+            echo "No new ready-exams files."
+            exit 0
+          fi
+          git -C ready config user.name "CertPassly Team"
+          git -C ready config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C ready commit -m "promote(${EXAM_CODE}): run ${GITHUB_RUN_ID}"
+          git -C ready pull --rebase origin main
+          git -C ready push origin HEAD:main
+          echo "ready_exams_pushed=true"
+
+      - name: Public-safe summary
+        env:
+          EXAM_CODE: ${{ steps.params.outputs.exam_code }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          path = os.path.join(os.environ["RUNNER_TEMP"], "work", "out", os.environ["EXAM_CODE"], "phase-reports", "public-summary.json")
+          data = json.load(open(path, encoding="utf-8"))
+          printed = {k: v for k, v in data.items() if k != "promotion_blockers"}
+          printed["billed_repository"] = os.environ.get("GITHUB_REPOSITORY")
+          print(json.dumps(printed, indent=2))
+          PY
+
+  leak-check-public-log:
+    needs: run
+    if: ${{ always() && needs.run.result != 'skipped' && github.repository == 'mathorax1-hue/exam' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Download this run's public log and scan it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXAM_CODE: ${{ needs.run.outputs.exam_code }}
+          RESULTS_PUSHED: ${{ needs.run.outputs.results_pushed }}
+          PAT: ${{ secrets.CERTPASSLY_REPOS_PAT }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/publog" "$RUNNER_TEMP/raw"
+          # Fetch the published job log for this run. Do not upload it.
+          attempts=0
+          until [ -s "$RUNNER_TEMP/publog.zip" ] || [ "$attempts" -ge 6 ]; do
+            attempts=$((attempts+1))
+            gh api -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/logs" \
+              > "$RUNNER_TEMP/publog.zip" || true
+            if [ -s "$RUNNER_TEMP/publog.zip" ]; then
+              break
+            fi
+            sleep 5
+          done
+          if [ ! -s "$RUNNER_TEMP/publog.zip" ]; then
+            echo "leak_check=fail reason=log_download_failed"
+            exit 2
+          fi
+          unzip -q -o "$RUNNER_TEMP/publog.zip" -d "$RUNNER_TEMP/publog"
+          rm -f "$RUNNER_TEMP/publog.zip"
+          SITE=""
+          EXPORT=""
+          RAW=""
+          if [ "${RESULTS_PUSHED}" = "true" ] && [ -n "${EXAM_CODE}" ] && [ -n "${PAT}" ]; then
+            git -c credential.helper= \
+              -c credential.helper='!f() { if [ "$1" = get ]; then printf "username=x-access-token\npassword=%s\n" "$PAT"; fi; }; f' \
+              clone --depth 1 --filter=blob:none --sparse \
+              "https://github.com/mathorax1-hue/raw-exam.git" "$RUNNER_TEMP/raw"
+            git -C "$RUNNER_TEMP/raw" sparse-checkout set "exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}" "exams/${EXAM_CODE}/source"
+            SITE="$RUNNER_TEMP/raw/exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}/${EXAM_CODE}.site-format.v2.json"
+            EXPORT="$RUNNER_TEMP/raw/exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}/export"
+            RAW="$RUNNER_TEMP/raw/exams/${EXAM_CODE}"
+          fi
+          # Clone the skill only to get the scanner if we did not check it out.
+          git -c credential.helper= clone --depth 1 --filter=blob:none --sparse \
+            "https://github.com/mathorax1-hue/certpassly-exam-skill.git" "$RUNNER_TEMP/skill"
+          git -C "$RUNNER_TEMP/skill" sparse-checkout set scripts
+          ARGS=(--log "$RUNNER_TEMP/publog" --output "$RUNNER_TEMP/leak-check-public-log.json")
+          if [ -n "$SITE" ] && [ -f "$SITE" ]; then
+            ARGS+=(--site-file "$SITE")
+          fi
+          if [ -n "$EXPORT" ] && [ -d "$EXPORT" ]; then
+            ARGS+=(--export-dir "$EXPORT")
+          fi
+          if [ -n "$RAW" ] && [ -d "$RAW" ]; then
+            ARGS+=(--raw-dir "$RAW")
+          fi
+          python3 "$RUNNER_TEMP/skill/scripts/check_log_leak.py" "${ARGS[@]}"
+          rm -rf "$RUNNER_TEMP/publog" "$RUNNER_TEMP/raw"
