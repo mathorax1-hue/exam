@@ -9,4 +9,4 @@
 - Policy: Record upstream changes with a Git commit when the observed revision changes. Never auto-upgrade unreviewed revisions.
 - Upgrade procedure: Read `docs/CERTPASSLY-OPERATIONS.md`, compare upstream changes, review instructions and tests, then update the pin by a reviewed change. The three-phase workflow and the public synthetic QA workflow now use v1.3.0.
 
-The three-phase workflow applies every certpassly-exam-skill/patches/upstream/v1.3.0-*.patch to pinned v1.3.0, in name order (ligature complete-words, then OCR retry / review sheet / owner corrections, then 400 dpi page-region retry and the AI vision hook), until those fixes are in an upstream tag. The site import gate remains local only.
+The three-phase workflow applies every certpassly-exam-skill/patches/upstream/v1.3.0-*.patch to pinned v1.3.0, in name order (ligature complete-words, then OCR retry / review sheet / owner corrections, then 400 dpi page-region retry and the AI vision hook, including the original-OCR AI acceptance check), until those fixes are in an upstream tag. The site import gate remains local only.
