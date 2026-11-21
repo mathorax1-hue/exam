@@ -74,8 +74,8 @@ jobs:
           set -euo pipefail
           python tests/demo_kit.py microsoft "$RUNNER_TEMP/certpassly-demo-ms"
           certpassly-pipeline --exam DM-101 --root "$RUNNER_TEMP/certpassly-demo-ms" --offline --date 2026-11-11
-          python scripts/check_import_conformance.py --root "$RUNNER_TEMP/certpassly-demo-ms" --exam DM-101
+          python scripts/validate_question_v2.py "$RUNNER_TEMP/certpassly-demo-ms/out/DM-101/DM-101.site-format.v2.json"
           python tests/demo_kit.py salesforce "$RUNNER_TEMP/certpassly-demo-generic"
           certpassly-pipeline --exam Demo-Admn-101 --root "$RUNNER_TEMP/certpassly-demo-generic" --offline --date 2026-11-11
-          python scripts/check_import_conformance.py --root "$RUNNER_TEMP/certpassly-demo-generic" --exam Demo-Admn-101
+          python scripts/validate_question_v2.py "$RUNNER_TEMP/certpassly-demo-generic/out/Demo-Admn-101/Demo-Admn-101.site-format.v2.json"
 
