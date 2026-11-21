@@ -34,18 +34,40 @@ on:
         default: none
   repository_dispatch:
     types: [three-phase-exam]
+  workflow_call:
+    inputs:
+      exam_code:
+        description: "Exact exams/ folder name in private raw-exam"
+        required: true
+        type: string
+      promote:
+        required: false
+        type: boolean
+        default: false
+      skill_ref:
+        required: false
+        type: string
+        default: main
+      use_committed_ai_reads:
+        required: false
+        type: boolean
+        default: true
+      ai_vision_provider:
+        required: false
+        type: string
+        default: none
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: three-phase-exam-${{ github.event.client_payload.exam_code || inputs.exam_code || github.run_id }}
+  group: three-phase-exam-${{ inputs.exam_code || github.event.client_payload.exam_code || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   refuse:
-    if: ${{ github.repository != 'mathorax1-hue/exam' || github.event.repository.fork == true || (github.event_name != 'workflow_dispatch' && github.event_name != 'repository_dispatch') }}
+    if: ${{ github.repository != 'mathorax1-hue/exam' || github.event.repository.fork == true || (github.event_name != 'workflow_dispatch' && github.event_name != 'repository_dispatch' && github.event_name != 'workflow_call') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
@@ -55,7 +77,7 @@ jobs:
           exit 1
 
   run:
-    if: ${{ github.repository == 'mathorax1-hue/exam' && github.event.repository.fork == false && (github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch') }}
+    if: ${{ github.repository == 'mathorax1-hue/exam' && github.event.repository.fork == false && (github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch' || github.event_name == 'workflow_call') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
@@ -90,20 +112,24 @@ jobs:
           import os, re, sys
           if os.environ.get("ACTOR") != os.environ.get("OWNER"):
               sys.exit("only the repository owner may start this run")
-          if os.environ.get("EVENT_NAME") == "repository_dispatch":
+          code = (os.environ.get("INPUT_CODE") or "").strip()
+          if code:
+              promote = str(os.environ.get("INPUT_PROMOTE") or "false").strip().lower()
+              skill = (os.environ.get("INPUT_SKILL") or "main").strip() or "main"
+              reads = str(os.environ.get("INPUT_READS") or "true").strip().lower()
+              provider = (os.environ.get("INPUT_PROVIDER") or "none").strip().lower() or "none"
+          elif os.environ.get("EVENT_NAME") == "repository_dispatch":
               code = (os.environ.get("PAYLOAD_CODE") or "").strip()
               promote = str(os.environ.get("PAYLOAD_PROMOTE") or "false").strip().lower()
               skill = (os.environ.get("PAYLOAD_SKILL") or "main").strip() or "main"
               reads = str(os.environ.get("PAYLOAD_READS") or "true").strip().lower()
               provider = (os.environ.get("PAYLOAD_PROVIDER") or "none").strip().lower() or "none"
           else:
-              code = (os.environ.get("INPUT_CODE") or "").strip()
-              promote = str(os.environ.get("INPUT_PROMOTE") or "false").strip().lower()
-              skill = (os.environ.get("INPUT_SKILL") or "main").strip() or "main"
-              reads = str(os.environ.get("INPUT_READS") or "true").strip().lower()
-              provider = (os.environ.get("INPUT_PROVIDER") or "none").strip().lower() or "none"
+              sys.exit("Invalid exam code")
           if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{1,39}", code):
               sys.exit("Invalid exam code")
+          if code.startswith("TEST-"):
+              promote = "false"
           if not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", skill):
               sys.exit("Invalid skill ref")
           if promote not in ("true", "false"):
@@ -275,7 +301,11 @@ jobs:
           git -C raw sparse-checkout disable > /dev/null 2>&1 || true
           git -C raw lfs install --local > /dev/null 2>&1 || true
           export GIT_SAVE_ERR="$RUNNER_TEMP/git-save.err"
-          if ! git -C raw add -- "exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}" > /dev/null 2> "$GIT_SAVE_ERR"; then
+          if ! git -C raw add -- \
+            "exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}" \
+            "exams/${EXAM_CODE}/questions-index.json" \
+            "exams/${EXAM_CODE}/changes" \
+            > /dev/null 2> "$GIT_SAVE_ERR"; then
             python3 - <<'PY'
           import os
           path = os.environ["GIT_SAVE_ERR"]
@@ -373,6 +403,7 @@ jobs:
       - name: Download the completed run job log
         env:
           GH_TOKEN: ${{ github.token }}
+          EXAM_CODE: ${{ needs.run.outputs.exam_code }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/publog"
@@ -387,12 +418,23 @@ jobs:
           req.add_header("Authorization", "Bearer " + os.environ["GH_TOKEN"])
           with urllib.request.urlopen(req, timeout=30) as resp:
               data = json.loads(resp.read().decode())
+          exam = (os.environ.get("EXAM_CODE") or "").strip()
+          matches = []
           for job in data.get("jobs") or []:
-              if job.get("name") == "run" and job.get("id"):
-                  print(job["id"])
-                  break
-          else:
+              name = job.get("name") or ""
+              if job.get("id") and (name == "run" or name.endswith(" / run")):
+                  matches.append(job)
+          chosen = None
+          if len(matches) == 1:
+              chosen = matches[0]
+          elif exam:
+              for job in matches:
+                  if exam in (job.get("name") or ""):
+                      chosen = job
+                      break
+          if not chosen:
               raise SystemExit("run_job_id_missing")
+          print(chosen["id"])
           PY
           )"
           echo "run_job_id=${JOB_ID}"
