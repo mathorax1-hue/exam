@@ -173,6 +173,8 @@ jobs:
             git -C raw config user.name "CertPassly Team"
             git -C raw config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git -C raw commit -m "results(${EXAM_CODE}): three-phase run ${GITHUB_RUN_ID}"
+            # Rebase if another exam's results landed first.
+            git -C raw pull --rebase origin main
             git -C raw push origin HEAD:main
           fi
 
