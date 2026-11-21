@@ -370,18 +370,12 @@ jobs:
       contents: read
       actions: read
     steps:
-      - name: Download this run's public log and scan it
+      - name: Download the completed run job log
         env:
           GH_TOKEN: ${{ github.token }}
-          EXAM_CODE: ${{ needs.run.outputs.exam_code }}
-          RESULTS_PUSHED: ${{ needs.run.outputs.results_pushed }}
-          SKILL_REF: ${{ needs.run.outputs.skill_ref }}
-          PAT: ${{ secrets.CERTPASSLY_REPOS_PAT }}
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/publog" "$RUNNER_TEMP/raw"
-          # Whole-run logs 404 while this workflow is still running. Fetch the
-          # completed "run" job log instead. Do not upload it.
+          mkdir -p "$RUNNER_TEMP/publog"
           JOB_ID="$(python3 - <<'PY'
           import json, os, urllib.request
           url = "https://api.github.com/repos/%s/actions/runs/%s/jobs?per_page=20" % (
@@ -408,7 +402,7 @@ jobs:
           ok=0
           while [ "$attempts" -lt 12 ]; do
             attempts=$((attempts+1))
-            rm -f "$RUNNER_TEMP/publog.zip"
+            rm -f "$ZIP_PATH"
             if gh api --allow-escape-sequences \
               "/repos/${GITHUB_REPOSITORY}/actions/jobs/${JOB_ID}/logs" \
               > "$ZIP_PATH"; then
@@ -423,8 +417,12 @@ jobs:
               zipfile.ZipFile(src).extractall(dest)
           else:
               shutil.copyfile(src, os.path.join(dest, "run-job.log"))
-          files = [p for p, _, fs in os.walk(dest) for p in fs]
-          raise SystemExit(0 if files else 1)
+          found = False
+          for root, _dirs, files in os.walk(dest):
+              if files:
+                  found = True
+                  break
+          raise SystemExit(0 if found else 1)
           PY
               then
                 ok=1
@@ -433,40 +431,55 @@ jobs:
             fi
             sleep 5
           done
+          rm -f "$ZIP_PATH"
           if [ "$ok" != "1" ]; then
             echo "leak_check=fail reason=log_download_failed"
             exit 2
           fi
-          rm -f "$RUNNER_TEMP/publog.zip"
-          SITE=""
-          EXPORT=""
-          RAW=""
-          if [ "${RESULTS_PUSHED}" = "true" ] && [ -n "${EXAM_CODE}" ] && [ -n "${PAT}" ]; then
-            git -c credential.helper= \
-              -c credential.helper='!f() { if [ "$1" = get ]; then printf "username=x-access-token\npassword=%s\n" "$PAT"; fi; }; f' \
-              clone --depth 1 --filter=blob:none --sparse \
-              "https://github.com/mathorax1-hue/raw-exam.git" "$RUNNER_TEMP/raw"
-            git -C "$RUNNER_TEMP/raw" sparse-checkout set "exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}" "exams/${EXAM_CODE}/source"
-            SITE="$RUNNER_TEMP/raw/exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}/${EXAM_CODE}.site-format.v2.json"
-            EXPORT="$RUNNER_TEMP/raw/exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}/export"
-            RAW="$RUNNER_TEMP/raw/exams/${EXAM_CODE}"
-          fi
-          # Clone the skill only to get the scanner if we did not check it out.
-          SKILL_REF="${SKILL_REF:-main}"
-          git -c credential.helper= clone --filter=blob:none --sparse \
-            "https://github.com/mathorax1-hue/certpassly-exam-skill.git" "$RUNNER_TEMP/skill"
-          git -C "$RUNNER_TEMP/skill" fetch --depth 1 origin "$SKILL_REF"
-          git -C "$RUNNER_TEMP/skill" checkout --detach FETCH_HEAD
-          git -C "$RUNNER_TEMP/skill" sparse-checkout set scripts
+          echo "log_download=ok"
+
+      - name: Check out pushed raw-exam results
+        if: ${{ needs.run.outputs.results_pushed == 'true' }}
+        uses: actions/checkout@v4
+        with:
+          repository: mathorax1-hue/raw-exam
+          token: ${{ secrets.CERTPASSLY_REPOS_PAT }}
+          path: raw-results
+          lfs: false
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            exams/${{ needs.run.outputs.exam_code }}/runs/${{ github.run_id }}/**
+            exams/${{ needs.run.outputs.exam_code }}/source/**
+
+      - name: Check out the leak scanner
+        uses: actions/checkout@v4
+        with:
+          repository: mathorax1-hue/certpassly-exam-skill
+          ref: ${{ needs.run.outputs.skill_ref }}
+          path: skill-scan
+          persist-credentials: false
+          sparse-checkout: |
+            scripts
+
+      - name: Scan the public run log
+        env:
+          EXAM_CODE: ${{ needs.run.outputs.exam_code }}
+          RESULTS_PUSHED: ${{ needs.run.outputs.results_pushed }}
+        run: |
+          set -euo pipefail
           ARGS=(--log "$RUNNER_TEMP/publog" --output "$RUNNER_TEMP/leak-check-public-log.json")
-          if [ -n "$SITE" ] && [ -f "$SITE" ]; then
+          SITE="raw-results/exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}/${EXAM_CODE}.site-format.v2.json"
+          EXPORT="raw-results/exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}/export"
+          RAW="raw-results/exams/${EXAM_CODE}"
+          if [ "${RESULTS_PUSHED}" = "true" ] && [ -f "$SITE" ]; then
             ARGS+=(--site-file "$SITE")
           fi
-          if [ -n "$EXPORT" ] && [ -d "$EXPORT" ]; then
+          if [ "${RESULTS_PUSHED}" = "true" ] && [ -d "$EXPORT" ]; then
             ARGS+=(--export-dir "$EXPORT")
           fi
-          if [ -n "$RAW" ] && [ -d "$RAW" ]; then
+          if [ "${RESULTS_PUSHED}" = "true" ] && [ -d "$RAW" ]; then
             ARGS+=(--raw-dir "$RAW")
           fi
-          python3 "$RUNNER_TEMP/skill/scripts/check_log_leak.py" "${ARGS[@]}"
-          rm -rf "$RUNNER_TEMP/publog" "$RUNNER_TEMP/raw"
+          python3 skill-scan/scripts/check_log_leak.py "${ARGS[@]}"
+          rm -rf "$RUNNER_TEMP/publog"
