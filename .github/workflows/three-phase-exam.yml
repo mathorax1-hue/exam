@@ -109,6 +109,18 @@ jobs:
         run: |
           test "$(git -C upstream rev-parse HEAD)" = "$UPSTREAM_PIN"
 
+      - name: Apply skill patches to pinned upstream
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          applied=0
+          for p in skill/patches/upstream/v1.3.0-*.patch; do
+            echo "Applying $p"
+            git -C upstream apply --whitespace=nowarn "$p"
+            applied=$((applied+1))
+          done
+          echo "applied_patch_count=$applied"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -125,6 +137,8 @@ jobs:
             sudo apt-get update -o Acquire::Retries=3
             sudo apt-get install -y -o Acquire::Retries=3 poppler-utils tesseract-ocr
           fi
+          echo "pdftotext:"; pdftotext -v 2>&1 | head -3 || true
+          echo "tesseract:"; tesseract --version 2>&1 | head -3 || true
 
       - name: Install pinned upstream
         run: python -m pip install -e ./upstream

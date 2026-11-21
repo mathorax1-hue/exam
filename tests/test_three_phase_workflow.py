@@ -20,6 +20,8 @@ class ThreePhaseWorkflowTests(unittest.TestCase):
         self.assertIn('[A-Za-z0-9][A-Za-z0-9._-]{1,39}', text)
         self.assertIn("github.event.repository.private == true", text)
         self.assertIn("github.event.repository.private == false", text)
+        self.assertIn("Apply skill patches to pinned upstream", text)
+        self.assertIn("skill/patches/upstream/v1.3.0-", text)
 
 
 if __name__ == "__main__":

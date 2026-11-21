@@ -8,3 +8,5 @@
 - Schedule: Mondays at 08:00 UTC (13:00 Pakistan Standard Time)
 - Policy: Record upstream changes with a Git commit when the observed revision changes. Never auto-upgrade unreviewed revisions.
 - Upgrade procedure: Read `docs/CERTPASSLY-OPERATIONS.md`, compare upstream changes, review instructions and tests, then update the pin by a reviewed change. The three-phase workflow and the public synthetic QA workflow now use v1.3.0.
+
+The three-phase workflow applies certpassly-exam-skill/patches/upstream/v1.3.0-lead-ligature-complete-words.patch to pinned v1.3.0 until that fix is in an upstream tag. The site import gate remains local only.
