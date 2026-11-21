@@ -116,7 +116,7 @@ jobs:
           applied=0
           for p in skill/patches/upstream/v1.3.0-*.patch; do
             echo "Applying $p"
-            git -C upstream apply --whitespace=nowarn "$p"
+            git -C upstream apply --whitespace=nowarn "$GITHUB_WORKSPACE/$p"
             applied=$((applied+1))
           done
           echo "applied_patch_count=$applied"
