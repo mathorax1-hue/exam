@@ -270,8 +270,33 @@ jobs:
           rm -f "$DEST/private-run.log"
           find "$DEST" -type f -name '*.pdf' -delete
           # Keep git quiet so file names never reach the public log.
-          if ! git -C raw add -q "exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}" > /dev/null 2> "$RUNNER_TEMP/git-save.err"; then
-            echo "git_add_failed"
+          echo "dest_file_count=$(find "$DEST" -type f | wc -l)"
+          git -C raw config core.safecrlf false
+          git -C raw sparse-checkout disable > /dev/null 2>&1 || true
+          git -C raw lfs install --local > /dev/null 2>&1 || true
+          export GIT_SAVE_ERR="$RUNNER_TEMP/git-save.err"
+          if ! git -C raw add -- "exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}" > /dev/null 2> "$GIT_SAVE_ERR"; then
+            python3 - <<'PY'
+          import os
+          path = os.environ["GIT_SAVE_ERR"]
+          text = open(path, errors="replace").read().lower()
+          reason = "other"
+          for key, label in (
+              ("sparse-checkout", "sparse"),
+              ("pathspec", "pathspec"),
+              ("did not match", "pathspec"),
+              ("git-lfs", "lfs"),
+              ("safecrlf", "crlf"),
+              ("permission", "permission"),
+              ("index.lock", "index_lock"),
+              ("not a git repository", "not_repo"),
+              ("disk", "disk"),
+          ):
+              if key in text:
+                  reason = label
+                  break
+          print("git_add_failed reason=%s err_bytes=%s" % (reason, os.path.getsize(path)))
+          PY
             exit 1
           fi
           if git -C raw diff --cached --quiet; then
@@ -384,32 +409,27 @@ jobs:
           while [ "$attempts" -lt 12 ]; do
             attempts=$((attempts+1))
             rm -f "$RUNNER_TEMP/publog.zip"
-            if python3 - <<'PY'
-          import os, sys, urllib.request, zipfile
-          job_id = os.environ["JOB_ID"]
-          dest = os.environ["ZIP_PATH"]
-          url = "https://api.github.com/repos/%s/actions/jobs/%s/logs" % (
-              os.environ["GITHUB_REPOSITORY"], job_id)
-          req = urllib.request.Request(url)
-          req.add_header("Accept", "application/vnd.github+json")
-          req.add_header("X-GitHub-Api-Version", "2022-11-28")
-          req.add_header("User-Agent", "certpassly-exam-pipeline")
-          req.add_header("Authorization", "Bearer " + os.environ["GH_TOKEN"])
-          try:
-              with urllib.request.urlopen(req, timeout=60) as resp:
-                  data = resp.read()
-          except Exception:
-              sys.exit(1)
-          open(dest, "wb").write(data)
-          try:
-              names = zipfile.ZipFile(dest).namelist()
-          except zipfile.BadZipFile:
-              sys.exit(1)
-          sys.exit(0 if names else 1)
+            if gh api --allow-escape-sequences \
+              "/repos/${GITHUB_REPOSITORY}/actions/jobs/${JOB_ID}/logs" \
+              > "$ZIP_PATH"; then
+              if python3 - <<'PY'
+          import os, shutil, zipfile
+          src = os.environ["ZIP_PATH"]
+          dest = os.path.join(os.environ["RUNNER_TEMP"], "publog")
+          os.makedirs(dest, exist_ok=True)
+          with open(src, "rb") as fh:
+              head = fh.read(4)
+          if head.startswith(b"PK"):
+              zipfile.ZipFile(src).extractall(dest)
+          else:
+              shutil.copyfile(src, os.path.join(dest, "run-job.log"))
+          files = [p for p, _, fs in os.walk(dest) for p in fs]
+          raise SystemExit(0 if files else 1)
           PY
-            then
-              ok=1
-              break
+              then
+                ok=1
+                break
+              fi
             fi
             sleep 5
           done
@@ -417,7 +437,6 @@ jobs:
             echo "leak_check=fail reason=log_download_failed"
             exit 2
           fi
-          unzip -q -o "$RUNNER_TEMP/publog.zip" -d "$RUNNER_TEMP/publog"
           rm -f "$RUNNER_TEMP/publog.zip"
           SITE=""
           EXPORT=""
