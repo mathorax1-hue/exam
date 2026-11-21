@@ -18,6 +18,7 @@ class ThreePhaseWorkflowTests(unittest.TestCase):
         self.assertIn("Refuse a real exam on the public repository", text)
         self.assertIn(PIN, text)
         self.assertIn("github.event.repository.private == true", text)
+        self.assertIn("github.event.repository.private == false", text)
 
 
 if __name__ == "__main__":
