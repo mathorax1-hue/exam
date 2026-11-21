@@ -42,3 +42,7 @@ The public processing code provides [release evidence generation](scripts/build_
 The separate [upstream-watch workflow](.github/workflows/upstream-watch.yml) checks upstream main on Mondays at 08:00 UTC. It commits a change to the **revision status document only if the upstream SHA or reviewed pin changed**. It does not auto-upgrade executable code. Any changes to the pin require an explicit review and new tests.
 
 The skill source is marked proprietary by its author. Refer to it by Git URL rather than copying or republishing its implementation.
+
+## Three-phase v1.3.0 workflow
+
+The public synthetic QA workflow now installs upstream `d9b6bf67efb870019dd88caeffa90952b7e000d3` (v1.3.0). Real owner PDFs are processed by the reusable [three-phase workflow](.github/workflows/three-phase-exam.yml), which is called from private raw-exam. A manual dispatch on this public repository is refused so question text never appears in public logs. Site importer testing stays a local sandbox gate (sqlite copy of website commit a3009daa5, never port 3306 or the 8330 audit) before any ready-exams promotion.

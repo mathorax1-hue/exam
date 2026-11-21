@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: msaqlainhaneef1/certpassly-exam-pipeline
-          ref: 13dea6bab662ab1c4bbf87017e912e519907c8bc
+          ref: d9b6bf67efb870019dd88caeffa90952b7e000d3
           path: certpassly-exam-pipeline
           persist-credentials: false
 

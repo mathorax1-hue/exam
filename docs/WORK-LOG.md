@@ -1,3 +1,12 @@
+# Work log
+
+## 2026-11-21 (Asia/Karachi)
+
+- Reviewed and adopted upstream v1.3.0 (`d9b6bf67efb870019dd88caeffa90952b7e000d3`) for the public synthetic QA workflow and the new three-phase reusable workflow.
+- Real owner-PDF runs stay in private raw-exam. Public dispatch of the three-phase workflow is refused.
+- The older `process-exams.yml` pin is unchanged until that private workflow is reviewed separately.
+- Site import testing is a local sandbox gate, not part of public Actions.
+
 # CertPassly workspace work log
 
 This log records GitHub workspace setup and safe operational changes. It is not a record of any real exam having been processed.

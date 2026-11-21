@@ -1,0 +1,167 @@
+name: Three-phase exam run
+
+# Real owner PDFs must be processed from private raw-exam, which calls this
+# reusable workflow. A dispatch on this public repo is refused so question
+# text never appears in public logs.
+
+on:
+  workflow_call:
+    inputs:
+      exam_code:
+        required: true
+        type: string
+      promote:
+        required: false
+        type: boolean
+        default: false
+      skill_ref:
+        required: false
+        type: string
+        default: main
+    secrets:
+      CERTPASSLY_REPOS_PAT:
+        required: true
+  workflow_dispatch:
+    inputs:
+      exam_code:
+        description: "Exam code (real runs must be started from private raw-exam)"
+        required: true
+        type: string
+      promote:
+        description: "Promote only if every gate already passed (default false)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: three-phase-${{ github.repository }}-${{ inputs.exam_code }}
+  cancel-in-progress: false
+
+jobs:
+  refuse-public:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.repository.private == false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Refuse a real exam on the public repository
+        run: |
+          echo "Real owner exams must be started from private raw-exam so question text never appears in public logs."
+          echo "Open: https://github.com/mathorax1-hue/raw-exam/actions/workflows/three-phase-exam.yml"
+          exit 1
+
+  run:
+    if: ${{ github.event_name == 'workflow_call' && github.event.repository.private == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    env:
+      EXAM_CODE: ${{ inputs.exam_code }}
+      PROMOTE: ${{ inputs.promote }}
+      UPSTREAM_PIN: d9b6bf67efb870019dd88caeffa90952b7e000d3
+    steps:
+      - name: Check exam code
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          code = os.environ["EXAM_CODE"].strip()
+          if not re.fullmatch(r"[A-Za-z][A-Za-z0-9._-]{1,39}", code):
+              sys.exit("Invalid exam code")
+          print("exam_code_ok")
+          PY
+
+      - name: Check out private raw-exam
+        uses: actions/checkout@v4
+        with:
+          repository: mathorax1-hue/raw-exam
+          token: ${{ secrets.CERTPASSLY_REPOS_PAT }}
+          path: raw
+          lfs: false
+          persist-credentials: true
+
+      - name: Fetch only this exam PDF from Git LFS
+        working-directory: raw
+        run: |
+          set -euo pipefail
+          git lfs install --local
+          git lfs pull --include="exams/${EXAM_CODE}/source/*" --exclude=""
+
+      - name: Check out shared skill
+        uses: actions/checkout@v4
+        with:
+          repository: mathorax1-hue/certpassly-exam-skill
+          ref: ${{ inputs.skill_ref }}
+          path: skill
+          persist-credentials: false
+
+      - name: Check out pinned upstream v1.3.0
+        uses: actions/checkout@v4
+        with:
+          repository: msaqlainhaneef1/certpassly-exam-pipeline
+          ref: d9b6bf67efb870019dd88caeffa90952b7e000d3
+          path: upstream
+          persist-credentials: false
+
+      - name: Confirm upstream pin
+        run: |
+          test "$(git -C upstream rev-parse HEAD)" = "$UPSTREAM_PIN"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: upstream/requirements.txt
+
+      - name: Install PDF tools if missing
+        run: |
+          set -euo pipefail
+          if command -v pdftohtml >/dev/null && command -v pdftoppm >/dev/null && command -v tesseract >/dev/null; then
+            echo "poppler and tesseract already present"
+          else
+            sudo apt-get update -o Acquire::Retries=3
+            sudo apt-get install -y -o Acquire::Retries=3 poppler-utils tesseract-ocr
+          fi
+
+      - name: Install pinned upstream
+        run: python -m pip install -e ./upstream
+
+      - name: Run three phases (no site sandbox in Actions)
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -euo pipefail
+          RAW_SHA="$(git -C raw rev-parse HEAD)"
+          python skill/scripts/run_three_phase.py \
+            --exam "$EXAM_CODE" \
+            --workspace "$RUNNER_TEMP/work" \
+            --upstream "$GITHUB_WORKSPACE/upstream" \
+            --raw-dir "$GITHUB_WORKSPACE/raw/exams/$EXAM_CODE" \
+            --exam-links "$GITHUB_WORKSPACE/raw/catalog/exam-links.csv" \
+            --ready-root "$GITHUB_WORKSPACE/ready" \
+            --raw-commit "$RAW_SHA"
+          python -m json.tool "$RUNNER_TEMP/work/out/$EXAM_CODE/phase-reports/public-summary.json"
+
+      - name: Save reports into private raw-exam
+        run: |
+          set -euo pipefail
+          DEST="raw/exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}"
+          mkdir -p "$DEST"
+          cp -a "$RUNNER_TEMP/work/out/$EXAM_CODE/." "$DEST/"
+          # Keep the owner PDF only in source/; do not duplicate it here.
+          git -C raw add "exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}"
+          if git -C raw diff --cached --quiet; then
+            echo "No new raw-exam files."
+          else
+            git -C raw config user.name "CertPassly Team"
+            git -C raw config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git -C raw commit -m "results(${EXAM_CODE}): three-phase run ${GITHUB_RUN_ID}"
+            git -C raw push origin HEAD:main
+          fi
+
+      - name: Public-safe summary
+        run: |
+          python -m json.tool "$RUNNER_TEMP/work/out/$EXAM_CODE/phase-reports/public-summary.json"
