@@ -68,7 +68,7 @@ jobs:
           python3 - <<'PY'
           import os, re, sys
           code = os.environ["EXAM_CODE"].strip()
-          if not re.fullmatch(r"[A-Za-z][A-Za-z0-9._-]{1,39}", code):
+          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{1,39}", code):
               sys.exit("Invalid exam code")
           print("exam_code_ok")
           PY
