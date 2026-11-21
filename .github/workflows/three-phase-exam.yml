@@ -132,16 +132,6 @@ jobs:
           path: raw
           lfs: false
           persist-credentials: true
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            catalog/**
-            exams/${{ steps.params.outputs.exam_code }}/source/**
-            exams/${{ steps.params.outputs.exam_code }}/review/**
-            exams/${{ steps.params.outputs.exam_code }}/rights/**
-            exams/${{ steps.params.outputs.exam_code }}/extract/**
-            exams/${{ steps.params.outputs.exam_code }}/*.json
-            exams/${{ steps.params.outputs.exam_code }}/*.md
-            exams/${{ steps.params.outputs.exam_code }}/*.csv
 
       - name: Fetch only this exam PDF from Git LFS
         working-directory: raw
@@ -279,19 +269,33 @@ jobs:
           # Never copy the captured private log or the owner PDF into git.
           rm -f "$DEST/private-run.log"
           find "$DEST" -type f -name '*.pdf' -delete
-          git -C raw add "exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}"
+          # Keep git quiet so file names never reach the public log.
+          if ! git -C raw add -q "exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}" > /dev/null 2> "$RUNNER_TEMP/git-save.err"; then
+            echo "git_add_failed"
+            exit 1
+          fi
           if git -C raw diff --cached --quiet; then
             echo "results_pushed=false" >> "$GITHUB_OUTPUT"
             echo "No new raw-exam files."
           else
             git -C raw config user.name "CertPassly Team"
             git -C raw config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git -C raw commit -m "results(${EXAM_CODE}): three-phase run ${GITHUB_RUN_ID}"
-            git -C raw pull --rebase origin main
-            git -C raw push origin HEAD:main
+            if ! git -C raw commit -q -m "results(${EXAM_CODE}): three-phase run ${GITHUB_RUN_ID}" > /dev/null 2> "$RUNNER_TEMP/git-save.err"; then
+              echo "git_commit_failed"
+              exit 1
+            fi
+            if ! git -C raw pull -q --rebase origin main > /dev/null 2> "$RUNNER_TEMP/git-save.err"; then
+              echo "git_pull_rebase_failed"
+              exit 1
+            fi
+            if ! git -C raw push -q origin HEAD:main > /dev/null 2> "$RUNNER_TEMP/git-save.err"; then
+              echo "git_push_failed"
+              exit 1
+            fi
             echo "results_pushed=true" >> "$GITHUB_OUTPUT"
             echo "results_pushed=true"
           fi
+          rm -f "$RUNNER_TEMP/git-save.err"
 
       - name: Push ready-exams only when promoted
         if: ${{ steps.params.outputs.promote == 'true' }}
@@ -373,18 +377,39 @@ jobs:
           PY
           )"
           echo "run_job_id=${JOB_ID}"
+          export JOB_ID
+          export ZIP_PATH="$RUNNER_TEMP/publog.zip"
           attempts=0
           ok=0
           while [ "$attempts" -lt 12 ]; do
             attempts=$((attempts+1))
             rm -f "$RUNNER_TEMP/publog.zip"
-            if gh api -H "Accept: application/vnd.github+json" \
-              "/repos/${GITHUB_REPOSITORY}/actions/jobs/${JOB_ID}/logs" \
-              > "$RUNNER_TEMP/publog.zip"; then
-              if python3 -c 'import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); sys.exit(0 if z.namelist() else 1)' "$RUNNER_TEMP/publog.zip"; then
-                ok=1
-                break
-              fi
+            if python3 - <<'PY'
+          import os, sys, urllib.request, zipfile
+          job_id = os.environ["JOB_ID"]
+          dest = os.environ["ZIP_PATH"]
+          url = "https://api.github.com/repos/%s/actions/jobs/%s/logs" % (
+              os.environ["GITHUB_REPOSITORY"], job_id)
+          req = urllib.request.Request(url)
+          req.add_header("Accept", "application/vnd.github+json")
+          req.add_header("X-GitHub-Api-Version", "2022-11-28")
+          req.add_header("User-Agent", "certpassly-exam-pipeline")
+          req.add_header("Authorization", "Bearer " + os.environ["GH_TOKEN"])
+          try:
+              with urllib.request.urlopen(req, timeout=60) as resp:
+                  data = resp.read()
+          except Exception:
+              sys.exit(1)
+          open(dest, "wb").write(data)
+          try:
+              names = zipfile.ZipFile(dest).namelist()
+          except zipfile.BadZipFile:
+              sys.exit(1)
+          sys.exit(0 if names else 1)
+          PY
+            then
+              ok=1
+              break
             fi
             sleep 5
           done
