@@ -64,6 +64,7 @@ jobs:
     outputs:
       exam_code: ${{ steps.params.outputs.exam_code }}
       results_pushed: ${{ steps.save.outputs.results_pushed }}
+      skill_ref: ${{ steps.params.outputs.skill_ref }}
     env:
       UPSTREAM_PIN: d9b6bf67efb870019dd88caeffa90952b7e000d3
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -131,6 +132,16 @@ jobs:
           path: raw
           lfs: false
           persist-credentials: true
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            catalog/**
+            exams/${{ steps.params.outputs.exam_code }}/source/**
+            exams/${{ steps.params.outputs.exam_code }}/review/**
+            exams/${{ steps.params.outputs.exam_code }}/rights/**
+            exams/${{ steps.params.outputs.exam_code }}/extract/**
+            exams/${{ steps.params.outputs.exam_code }}/*.json
+            exams/${{ steps.params.outputs.exam_code }}/*.md
+            exams/${{ steps.params.outputs.exam_code }}/*.csv
 
       - name: Fetch only this exam PDF from Git LFS
         working-directory: raw
@@ -237,12 +248,8 @@ jobs:
             "${PROMOTE_FLAG[@]}"
           PHASE_RC=$?
           set -e
-          python skill/scripts/check_log_leak.py \
-            --log "$CERTPASSLY_PRIVATE_LOG" \
-            --site-file "$RUNNER_TEMP/work/out/$EXAM_CODE/$EXAM_CODE.site-format.v2.json" \
-            --export-dir "$RUNNER_TEMP/work/out/$EXAM_CODE/export" \
-            --raw-dir "$GITHUB_WORKSPACE/raw/exams/$EXAM_CODE" \
-            --output "$RUNNER_TEMP/work/out/$EXAM_CODE/phase-reports/leak-check-private-log.json"
+          # The private log is expected to contain question text. Do not fail on it
+          # and never print it. Scan only the public step summary here.
           if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "$GITHUB_STEP_SUMMARY" ]; then
             python skill/scripts/check_log_leak.py \
               --log "$GITHUB_STEP_SUMMARY" \
@@ -250,18 +257,28 @@ jobs:
               --export-dir "$RUNNER_TEMP/work/out/$EXAM_CODE/export" \
               --raw-dir "$GITHUB_WORKSPACE/raw/exams/$EXAM_CODE"
           fi
+          echo "phase_rc=$PHASE_RC" >> "$GITHUB_OUTPUT"
           exit "$PHASE_RC"
 
       - name: Save reports into private raw-exam
         id: save
+        if: ${{ !cancelled() }}
         env:
           EXAM_CODE: ${{ steps.params.outputs.exam_code }}
         run: |
           set -euo pipefail
+          SRC="$RUNNER_TEMP/work/out/$EXAM_CODE"
+          if [ ! -d "$SRC" ]; then
+            echo "results_pushed=false" >> "$GITHUB_OUTPUT"
+            echo "No output directory."
+            exit 0
+          fi
           DEST="raw/exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}"
           mkdir -p "$DEST"
-          cp -a "$RUNNER_TEMP/work/out/$EXAM_CODE/." "$DEST/"
+          cp -a "$SRC/." "$DEST/"
           # Never copy the captured private log or the owner PDF into git.
+          rm -f "$DEST/private-run.log"
+          find "$DEST" -type f -name '*.pdf' -delete
           git -C raw add "exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}"
           if git -C raw diff --cached --quiet; then
             echo "results_pushed=false" >> "$GITHUB_OUTPUT"
@@ -302,6 +319,7 @@ jobs:
           echo "ready_exams_pushed=true"
 
       - name: Public-safe summary
+        if: ${{ !cancelled() }}
         env:
           EXAM_CODE: ${{ steps.params.outputs.exam_code }}
         run: |
@@ -328,23 +346,49 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EXAM_CODE: ${{ needs.run.outputs.exam_code }}
           RESULTS_PUSHED: ${{ needs.run.outputs.results_pushed }}
+          SKILL_REF: ${{ needs.run.outputs.skill_ref }}
           PAT: ${{ secrets.CERTPASSLY_REPOS_PAT }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/publog" "$RUNNER_TEMP/raw"
-          # Fetch the published job log for this run. Do not upload it.
+          # Whole-run logs 404 while this workflow is still running. Fetch the
+          # completed "run" job log instead. Do not upload it.
+          JOB_ID="$(python3 - <<'PY'
+          import json, os, urllib.request
+          url = "https://api.github.com/repos/%s/actions/runs/%s/jobs?per_page=20" % (
+              os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_RUN_ID"])
+          req = urllib.request.Request(url)
+          req.add_header("Accept", "application/vnd.github+json")
+          req.add_header("X-GitHub-Api-Version", "2022-11-28")
+          req.add_header("User-Agent", "certpassly-exam-pipeline")
+          req.add_header("Authorization", "Bearer " + os.environ["GH_TOKEN"])
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              data = json.loads(resp.read().decode())
+          for job in data.get("jobs") or []:
+              if job.get("name") == "run" and job.get("id"):
+                  print(job["id"])
+                  break
+          else:
+              raise SystemExit("run_job_id_missing")
+          PY
+          )"
+          echo "run_job_id=${JOB_ID}"
           attempts=0
-          until [ -s "$RUNNER_TEMP/publog.zip" ] || [ "$attempts" -ge 6 ]; do
+          ok=0
+          while [ "$attempts" -lt 12 ]; do
             attempts=$((attempts+1))
-            gh api -H "Accept: application/vnd.github+json" \
-              "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/logs" \
-              > "$RUNNER_TEMP/publog.zip" || true
-            if [ -s "$RUNNER_TEMP/publog.zip" ]; then
-              break
+            rm -f "$RUNNER_TEMP/publog.zip"
+            if gh api -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/actions/jobs/${JOB_ID}/logs" \
+              > "$RUNNER_TEMP/publog.zip"; then
+              if python3 -c 'import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); sys.exit(0 if z.namelist() else 1)' "$RUNNER_TEMP/publog.zip"; then
+                ok=1
+                break
+              fi
             fi
             sleep 5
           done
-          if [ ! -s "$RUNNER_TEMP/publog.zip" ]; then
+          if [ "$ok" != "1" ]; then
             echo "leak_check=fail reason=log_download_failed"
             exit 2
           fi
@@ -364,8 +408,11 @@ jobs:
             RAW="$RUNNER_TEMP/raw/exams/${EXAM_CODE}"
           fi
           # Clone the skill only to get the scanner if we did not check it out.
-          git -c credential.helper= clone --depth 1 --filter=blob:none --sparse \
+          SKILL_REF="${SKILL_REF:-main}"
+          git -c credential.helper= clone --filter=blob:none --sparse \
             "https://github.com/mathorax1-hue/certpassly-exam-skill.git" "$RUNNER_TEMP/skill"
+          git -C "$RUNNER_TEMP/skill" fetch --depth 1 origin "$SKILL_REF"
+          git -C "$RUNNER_TEMP/skill" checkout --detach FETCH_HEAD
           git -C "$RUNNER_TEMP/skill" sparse-checkout set scripts
           ARGS=(--log "$RUNNER_TEMP/publog" --output "$RUNNER_TEMP/leak-check-public-log.json")
           if [ -n "$SITE" ] && [ -f "$SITE" ]; then
