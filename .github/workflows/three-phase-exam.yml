@@ -18,9 +18,21 @@ on:
         required: false
         type: string
         default: main
+      use_committed_ai_reads:
+        description: "Use committed review/ai-reads.json when present. Set false so the live provider does the reads."
+        required: false
+        type: boolean
+        default: true
+      ai_vision_provider:
+        description: "AI vision provider. Default none. Private raw-exam may pass groq."
+        required: false
+        type: string
+        default: none
     secrets:
       CERTPASSLY_REPOS_PAT:
         required: true
+      GROQ_API_KEY:
+        required: false
   workflow_dispatch:
     inputs:
       exam_code:
@@ -62,6 +74,10 @@ jobs:
       EXAM_CODE: ${{ inputs.exam_code }}
       PROMOTE: ${{ inputs.promote }}
       UPSTREAM_PIN: d9b6bf67efb870019dd88caeffa90952b7e000d3
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      CERTPASSLY_AI_VISION_PROVIDER: ${{ inputs.ai_vision_provider }}
+      CERTPASSLY_AI_VISION_ENABLED: ${{ inputs.ai_vision_provider == 'groq' }}
+      CERTPASSLY_USE_COMMITTED_AI_READS: ${{ inputs.use_committed_ai_reads }}
     steps:
       - name: Check exam code
         run: |
