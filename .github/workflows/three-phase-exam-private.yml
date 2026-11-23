@@ -58,8 +58,10 @@ jobs:
     if: ${{ github.event.repository.private == true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    # The private raw checkout uses the explicitly passed CERTPASSLY_REPOS_PAT for pushes.
+    # Keep GITHUB_TOKEN read-only; the caller grants only contents: read.
     permissions:
-      contents: write
+      contents: read
     env:
       EXAM_CODE: ${{ inputs.exam_code }}
       PROMOTE: ${{ inputs.promote }}
