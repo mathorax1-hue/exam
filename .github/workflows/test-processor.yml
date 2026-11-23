@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/test-processor.yml"
+      - ".github/workflows/three-phase-exam-private.yml"
       - "scripts/**"
       - "tests/**"
   pull_request:
     paths:
       - ".github/workflows/test-processor.yml"
+      - ".github/workflows/three-phase-exam-private.yml"
       - "scripts/**"
       - "tests/**"
   workflow_dispatch:
