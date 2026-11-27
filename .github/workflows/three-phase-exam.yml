@@ -21,7 +21,7 @@ on:
         description: "certpassly-exam-skill ref (commit SHA preferred)"
         required: false
         type: string
-        default: main
+        default: d2f382c32283e0648d6bda0d963dda18dad9674d
       use_committed_ai_reads:
         description: "Use committed review/ai-reads.json when present"
         required: false
@@ -47,7 +47,7 @@ on:
       skill_ref:
         required: false
         type: string
-        default: main
+        default: d2f382c32283e0648d6bda0d963dda18dad9674d
       use_committed_ai_reads:
         required: false
         type: boolean
@@ -115,13 +115,13 @@ jobs:
           code = (os.environ.get("INPUT_CODE") or "").strip()
           if code:
               promote = str(os.environ.get("INPUT_PROMOTE") or "false").strip().lower()
-              skill = (os.environ.get("INPUT_SKILL") or "main").strip() or "main"
+              skill = (os.environ.get("INPUT_SKILL") or "d2f382c32283e0648d6bda0d963dda18dad9674d").strip() or "d2f382c32283e0648d6bda0d963dda18dad9674d"
               reads = str(os.environ.get("INPUT_READS") or "true").strip().lower()
               provider = (os.environ.get("INPUT_PROVIDER") or "none").strip().lower() or "none"
           elif os.environ.get("EVENT_NAME") == "repository_dispatch":
               code = (os.environ.get("PAYLOAD_CODE") or "").strip()
               promote = str(os.environ.get("PAYLOAD_PROMOTE") or "false").strip().lower()
-              skill = (os.environ.get("PAYLOAD_SKILL") or "main").strip() or "main"
+              skill = (os.environ.get("PAYLOAD_SKILL") or "d2f382c32283e0648d6bda0d963dda18dad9674d").strip() or "d2f382c32283e0648d6bda0d963dda18dad9674d"
               reads = str(os.environ.get("PAYLOAD_READS") or "true").strip().lower()
               provider = (os.environ.get("PAYLOAD_PROVIDER") or "none").strip().lower() or "none"
           else:
