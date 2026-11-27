@@ -18,7 +18,7 @@ on:
       skill_ref:
         required: false
         type: string
-        default: main
+        default: d2f382c32283e0648d6bda0d963dda18dad9674d
       use_committed_ai_reads:
         description: "Use committed review/ai-reads.json when present. Set false so the live provider does the reads."
         required: false
