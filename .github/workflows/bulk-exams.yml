@@ -16,7 +16,7 @@ on:
         description: "certpassly-exam-skill ref (commit SHA preferred)"
         required: false
         type: string
-        default: main
+        default: d2f382c32283e0648d6bda0d963dda18dad9674d
       promote:
         description: "Promote only if every gate already passed (default false)"
         required: false
@@ -99,14 +99,14 @@ jobs:
               sys.exit("only the repository owner may start this run")
           if os.environ.get("EVENT_NAME") == "repository_dispatch":
               selection = (os.environ.get("PAYLOAD_SELECTION") or "new").strip() or "new"
-              skill = (os.environ.get("PAYLOAD_SKILL") or "main").strip() or "main"
+              skill = (os.environ.get("PAYLOAD_SKILL") or "d2f382c32283e0648d6bda0d963dda18dad9674d").strip() or "d2f382c32283e0648d6bda0d963dda18dad9674d"
               promote = str(os.environ.get("PAYLOAD_PROMOTE") or "false").strip().lower()
               parallel = str(os.environ.get("PAYLOAD_PARALLEL") or "2").strip() or "2"
               provider = (os.environ.get("PAYLOAD_PROVIDER") or "none").strip().lower() or "none"
               reads = str(os.environ.get("PAYLOAD_READS") or "true").strip().lower()
           else:
               selection = (os.environ.get("INPUT_SELECTION") or "new").strip() or "new"
-              skill = (os.environ.get("INPUT_SKILL") or "main").strip() or "main"
+              skill = (os.environ.get("INPUT_SKILL") or "d2f382c32283e0648d6bda0d963dda18dad9674d").strip() or "d2f382c32283e0648d6bda0d963dda18dad9674d"
               promote = str(os.environ.get("INPUT_PROMOTE") or "false").strip().lower()
               parallel = str(os.environ.get("INPUT_PARALLEL") or "2").strip() or "2"
               provider = (os.environ.get("INPUT_PROVIDER") or "none").strip().lower() or "none"
