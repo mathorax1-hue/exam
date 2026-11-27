@@ -276,6 +276,56 @@ jobs:
           echo "phase_rc=$PHASE_RC" >> "$GITHUB_OUTPUT"
           exit "$PHASE_RC"
 
+      - name: Safe failure summary (counts and error type only)
+        if: ${{ failure() && steps.phase.outcome == 'failure' }}
+        continue-on-error: true
+        env:
+          EXAM_CODE: ${{ steps.params.outputs.exam_code }}
+          PHASE_RC: ${{ steps.phase.outputs.phase_rc }}
+        run: |
+          set +e
+          LOG="${{ runner.temp }}/private-run.log"
+          OUT="${{ runner.temp }}/failure-summary.txt"
+          : > "$OUT"
+          if [ -f "$LOG" ]; then
+            python3 - "$LOG" "$OUT" <<'PY'
+          import os, re, sys
+          log_path, out_path = sys.argv[1], sys.argv[2]
+          traceback_re = re.compile(r"^Traceback\b")
+          file_re = re.compile(r"^  File ")
+          exc_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception)\b")
+          kept = []
+          with open(log_path, encoding="utf-8", errors="replace") as fh:
+              for line in fh:
+                  s = line.rstrip("\n")
+                  if traceback_re.match(s) or file_re.match(s):
+                      kept.append(s)
+                  elif exc_re.match(s):
+                      kept.append(s.split(":", 1)[0].strip())
+          with open(out_path, "a", encoding="utf-8") as fh:
+              for s in kept[-30:]:
+                  fh.write(s + "\n")
+              fh.write("exam_code=%s\n" % (os.environ.get("EXAM_CODE") or ""))
+              fh.write("phase_rc=%s\n" % (os.environ.get("PHASE_RC") or ""))
+          PY
+          else
+            echo "private log missing" >> "$OUT"
+          fi
+          if python skill/scripts/check_log_leak.py \
+            --log "$OUT" \
+            --site-file "$RUNNER_TEMP/work/out/$EXAM_CODE/$EXAM_CODE.site-format.v2.json" \
+            --export-dir "$RUNNER_TEMP/work/out/$EXAM_CODE/export" \
+            --raw-dir "$GITHUB_WORKSPACE/raw/exams/$EXAM_CODE" > /dev/null 2>&1; then
+            if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+              cat "$OUT" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+              echo "failure summary withheld: leak scan did not pass" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          exit 0
+
       - name: Save reports into private raw-exam
         id: save
         if: ${{ !cancelled() }}
@@ -339,11 +389,17 @@ jobs:
               echo "git_commit_failed"
               exit 1
             fi
-            if ! git -C raw pull -q --rebase origin main > /dev/null 2> "$RUNNER_TEMP/git-save.err"; then
-              echo "git_pull_rebase_failed"
-              exit 1
-            fi
-            if ! git -C raw push -q origin HEAD:main > /dev/null 2> "$RUNNER_TEMP/git-save.err"; then
+            pushed=false
+            for attempt in 1 2 3 4 5; do
+              if git -C raw pull -q --rebase origin main > /dev/null 2> "$RUNNER_TEMP/git-save.err" && git -C raw push -q origin HEAD:main > /dev/null 2> "$RUNNER_TEMP/git-save.err"; then
+                pushed=true
+                break
+              fi
+              echo "git_push_attempt_${attempt}_failed; retrying with a fresh rebase"
+              git -C raw rebase --abort > /dev/null 2>&1 || true
+              sleep 5
+            done
+            if [ "$pushed" != "true" ]; then
               echo "git_push_failed"
               exit 1
             fi
