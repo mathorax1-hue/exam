@@ -294,9 +294,8 @@ jobs:
           traceback_re = re.compile(r"^Traceback\b")
           file_re = re.compile(r"^  File ")
           exc_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception)\b")
-          stage_re = re.compile(r"^==== stage \S+ failed for \S+ \(exit \d+\) ====$")
-          failed_re = re.compile(r"^run_three_phase_failed exit=\d+$")
-          subfail_re = re.compile(r"^  FAILED exit \d+$")
+          stage_re = re.compile(r"==== stage (\S+) failed for \S+ \(exit (\d+)\) ====")
+          subfail_re = re.compile(r"FAILED exit (\d+)")
           kept = []
           with open(log_path, encoding="utf-8", errors="replace") as fh:
               for line in fh:
@@ -305,8 +304,14 @@ jobs:
                       kept.append(s)
                   elif exc_re.match(s):
                       kept.append(s.split(":", 1)[0].strip())
-                  elif stage_re.match(s) or failed_re.match(s) or subfail_re.match(s):
-                      kept.append(s)
+                  else:
+                      m = stage_re.search(s)
+                      if m:
+                          kept.append("stage=%s exit=%s" % (m.group(1), m.group(2)))
+                      else:
+                          m2 = subfail_re.search(s)
+                          if m2:
+                              kept.append("failed_exit=%s" % m2.group(1))
           with open(out_path, "a", encoding="utf-8") as fh:
               for s in kept[-30:]:
                   fh.write(s + "\n")
