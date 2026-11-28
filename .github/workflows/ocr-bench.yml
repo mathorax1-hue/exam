@@ -1,0 +1,107 @@
+name: OCR bench
+
+on:
+  workflow_dispatch:
+    inputs:
+      skill_ref:
+        description: "Skill ref (branch, tag, or SHA)"
+        required: false
+        default: "main"
+      models:
+        description: "Comma-separated models (default: all)"
+        required: false
+        default: "tesseract,rapidocr,paddleocr,doctr,florence2,smoldocling,gotocr,qwen2vl"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ocr-bench
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out private raw-exam (images and manifest)
+        uses: actions/checkout@v4
+        with:
+          repository: mathorax1-hue/raw-exam
+          token: ${{ secrets.CERTPASSLY_REPOS_PAT }}
+          path: raw
+          lfs: false
+          persist-credentials: true
+
+      - name: Check out shared skill
+        uses: actions/checkout@v4
+        with:
+          repository: mathorax1-hue/certpassly-exam-skill
+          ref: ${{ inputs.skill_ref }}
+          path: skill
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: skill/pyproject.toml
+
+      - name: Install system OCR
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq tesseract-ocr poppler-utils
+
+      - name: Install benchmark dependencies (pinned)
+        env:
+          PIP_INDEX_URL: https://pypi.org/simple
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --index-url https://download.pytorch.org/whl/cpu \
+            torch==2.5.1+cpu torchvision==0.20.1+cpu
+          python3 -m pip install paddlepaddle==2.6.2 paddleocr==2.8.1
+          python3 -m pip install rapidocr-onnxruntime==1.4.4 doctr==1.9.0
+          python3 -m pip install transformers==4.57.6 pillow
+          python3 -m pip list | grep -iE "torch|paddle|rapidocr|doctr|transformers"
+
+      - name: Run the OCR benchmark (counts only in the log)
+        env:
+          HF_HOME: ${{ runner.temp }}/hf-cache
+          HF_HUB_CACHE: ${{ runner.temp }}/hf-cache
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ runner.temp }}/bench-images" "${{ runner.temp }}/bench-out"
+          python3 - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          man = json.loads(Path("raw/docs/plan/bench/manifest.json").read_text())
+          src = Path("raw/exams/AZ-900/runs/46092989201/media/src")
+          dst = Path("${{ runner.temp }}/bench-images")
+          for entry in man:
+              name = Path(entry["file"]).name
+              shutil.copyfile(src / name, dst / name)
+          print(f"copied {len(man)} images")
+          PY
+          python3 skill/scripts/ocr_bench.py \
+            --images "${{ runner.temp }}/bench-images" \
+            --manifest raw/docs/plan/bench/manifest.json \
+            --out "${{ runner.temp }}/bench-out" \
+            --models "${{ inputs.models }}"
+          python3 skill/scripts/check_log_leak.py "${{ runner.temp }}/bench-out/bench.md" || true
+
+      - name: Commit results to raw-exam docs/plan/bench/
+        working-directory: raw
+        run: |
+          set -euo pipefail
+          mkdir -p docs/plan/bench
+          cp "${{ runner.temp }}/bench-out/bench.json" docs/plan/bench/bench.json
+          cp "${{ runner.temp }}/bench-out/bench.md" docs/plan/bench/bench.md
+          cp "${{ runner.temp }}"/bench-out/*.txt docs/plan/bench/ || true
+          git config user.name "CertPassly Team"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/plan/bench/
+          git commit -m "docs(plan): OCR bench results, run ${{ github.run_id }}" || echo "nothing to commit"
+          git push origin main
