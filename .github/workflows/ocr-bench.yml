@@ -69,7 +69,10 @@ jobs:
           # Qwen2-VL needs accelerate and qwen-vl-utils. Without these,
           # the models fail at import with a missing-package error.
           python3 -m pip install einops timm verovio accelerate qwen-vl-utils
-          python3 -m pip list | grep -iE "torch|paddle|rapidocr|doctr|transformers|einops|timm|verovio|accelerate|qwen"
+          # PaddleOCR 2.8 / paddlepaddle 2.6 use np.sctypes, removed in NumPy 2.0.
+          # Pin NumPy 1.x last so no later install pulls NumPy 2 back in.
+          python3 -m pip install "numpy<2"
+          python3 -m pip list | grep -iE "numpy|torch|paddle|rapidocr|doctr|transformers|einops|timm|verovio|accelerate|qwen"
 
       - name: Run the OCR benchmark (counts only in the log)
         env:
