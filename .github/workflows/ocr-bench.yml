@@ -94,7 +94,7 @@ jobs:
             --manifest raw/docs/plan/bench/manifest.json \
             --out "${{ runner.temp }}/bench-out" \
             --models "${{ inputs.models }}"
-          python3 skill/scripts/check_log_leak.py "${{ runner.temp }}/bench-out/bench.md" || true
+          python3 skill/scripts/check_log_leak.py --log "${{ runner.temp }}/bench-out/bench.md" || true
 
       - name: Commit results to raw-exam docs/plan/bench/
         working-directory: raw
@@ -108,4 +108,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/plan/bench/
           git commit -m "docs(plan): OCR bench results, run ${{ github.run_id }}" || echo "nothing to commit"
-          git push origin main
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push origin main && break
+            sleep 5
+          done
