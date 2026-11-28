@@ -63,7 +63,7 @@ jobs:
           python3 -m pip install --index-url https://download.pytorch.org/whl/cpu \
             torch==2.5.1+cpu torchvision==0.20.1+cpu
           python3 -m pip install paddlepaddle==2.6.2 paddleocr==2.8.1
-          python3 -m pip install rapidocr-onnxruntime==1.4.4 doctr==1.9.0
+          python3 -m pip install rapidocr-onnxruntime==1.4.4 "python-doctr[torch]==0.10.0"
           python3 -m pip install transformers==4.57.6 pillow
           # Florence-2 needs einops and timm; GOT-OCR 2.0 needs verovio;
           # Qwen2-VL needs accelerate and qwen-vl-utils. Without these,
