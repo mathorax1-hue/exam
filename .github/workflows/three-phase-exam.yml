@@ -361,10 +361,14 @@ jobs:
           git -C raw sparse-checkout disable > /dev/null 2>&1 || true
           git -C raw lfs install --local > /dev/null 2>&1 || true
           export GIT_SAVE_ERR="$RUNNER_TEMP/git-save.err"
-          if ! git -C raw add -- \
-            "exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}" \
-            "exams/${EXAM_CODE}/questions-index.json" \
-            "exams/${EXAM_CODE}/changes" \
+          ADD_PATHS=("exams/${EXAM_CODE}/runs/${GITHUB_RUN_ID}")
+          if [ -e "raw/exams/${EXAM_CODE}/questions-index.json" ]; then
+            ADD_PATHS+=("exams/${EXAM_CODE}/questions-index.json")
+          fi
+          if [ -e "raw/exams/${EXAM_CODE}/changes" ]; then
+            ADD_PATHS+=("exams/${EXAM_CODE}/changes")
+          fi
+          if ! git -C raw add -- "${ADD_PATHS[@]}" \
             > /dev/null 2> "$GIT_SAVE_ERR"; then
             python3 - <<'PY'
           import os
