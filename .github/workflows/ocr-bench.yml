@@ -81,7 +81,7 @@ jobs:
           src = Path("raw/exams/AZ-900/runs/46092989201/media/src")
           dst = Path("${{ runner.temp }}/bench-images")
           for entry in man:
-              name = Path(entry["file"]).name
+              name = entry["image"]
               shutil.copyfile(src / name, dst / name)
           print(f"copied {len(man)} images")
           PY
